@@ -212,14 +212,19 @@ function diagramsBesideEachOther(html) {
   while ((m = re.exec(body))) {
     const [, close, tag0, attrs] = m; const tag = tag0.toLowerCase();
     if (close) { const i = stack.map((x) => x.tag).lastIndexOf(tag); if (i >= 0) stack.length = i; continue; }
-    const cls = (/\bclass\s*=\s*["']([^"']*)["']/.exec(attrs) || [])[1] || '';
+    const cm = /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/.exec(attrs); const cls = cm ? cm[1] ?? cm[2] ?? cm[3] : '';
     if (tag === 'pre' && /\bpb-diagram\b/.test(cls)) {
       n++;
       const end = body.indexOf('</pre>', re.lastIndex);
       const srcm = /data-src\s*=\s*"([^"]*)"/.exec(attrs);
       const src = decodeEntities(srcm ? srcm[1] : body.slice(re.lastIndex, end < 0 ? undefined : end));
       const first = (src.split('\n').find((l) => l.trim() && !l.trim().startsWith('%%')) || '').trim();
-      const wide = /^sequenceDiagram/i.test(first) || /^(?:flowchart|graph)\s+(?:LR|RL)\b/i.test(first);
+      // wide enough to matter: a sequence diagram with 3+ participants, or a left-to-right flowchart with 4+ nodes
+      const P = diagramParsers(); let wide = false;
+      try {
+        if (/^sequenceDiagram/i.test(first)) wide = !P || P.parseSeq(src.trim()).P.length >= 3;
+        else if (/^(?:flowchart|graph)\s+(?:LR|RL)\b/i.test(first)) wide = !P || P.parseFlow(src.trim()).nodes.size >= 4;
+      } catch { wide = false; } // a broken diagram is reported elsewhere
       if (wide && stack.some((x) => /(?:^|\s)(?:pb-split|pb-grid)(?:\s|$|--)/.test(x.cls))) { const id = /data-pb-id\s*=\s*["']([^"']+)["']/.exec(attrs); out.push(id ? `"${id[1]}"` : `#${n}`); }
       if (end >= 0) re.lastIndex = end + 6;
       continue;
