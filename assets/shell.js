@@ -606,7 +606,7 @@ var PB_PARSE = (() => {
   function renderRisk(r) {
     const meter = (label, v) => h('span', { class: 'pb-meter', 'data-v': v === 'medium' ? 'med' : (v || 'med') }, label, h('i', {}, h('b'), h('b'), h('b')));
     return h('div', { class: 'pb-item pb-risk', 'data-pb-id': r.id, 'data-pb-kind': 'risk', 'data-pb-label': plain(r.text) },
-      h('div', {}, h('span', { class: 'pb-risk__text', html: mdInline(r.text) }), ' ', h('span', { class: 'pb-id', text: r.id })),
+      h('div', { class: 'pb-risk__head' }, h('span', { class: 'pb-risk__text', html: mdInline(r.text) }), ' ', h('span', { class: 'pb-id', text: r.id })),
       h('div', { class: 'pb-risk__meters' }, meter('Likelihood', r.likelihood), meter('Impact', r.impact)),
       r.mitigation ? h('div', { class: 'pb-risk__mit', html: mdInline(r.mitigation) }) : null);
   }
@@ -729,7 +729,7 @@ var PB_PARSE = (() => {
       if (!el) continue;
       c.el = el; el.classList.add('pb-changed');
       const mark = h('span', { html: DELTA(round) }).firstChild;
-      const head = $(':scope > .pb-item__head, :scope > .pb-block__head', el) || (el.matches('h1,h2,h3,h4,li') ? el : null);
+      const head = $(':scope > .pb-item__head, :scope > .pb-block__head, :scope > .pb-risk__head', el) || (el.matches('h1,h2,h3,h4,li') ? el : null);
       if (head) head.append(' ', mark);
       else if (el.matches('[data-pb-section]')) { const hd = $('h1, h2, h3', el); if (hd) hd.append(' ', mark); else { mark.classList.add('pb-delta--block'); el.prepend(mark); } }
       else if (el.namespaceURI === 'http://www.w3.org/2000/svg') el.classList.add('pbd-changed');
