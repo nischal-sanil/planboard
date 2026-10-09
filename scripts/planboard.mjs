@@ -467,8 +467,17 @@ const HANDOFF_SKELETON_H3 = ['Where things stand', 'Step status', 'Background', 
 // The lines that are headings, skipping fenced code the way Markdown does: a fence closes only with the same
 // character, at least as long, and nothing else on the line.
 function mdHeadings(lines) {
-  const heads = []; let fence = null;
+  const heads = []; let fence = null; let comment = false;
   lines.forEach((l, k) => {
+    if (!fence) {
+      // HTML comments, possibly spanning lines: nothing inside one is a heading
+      const startedInComment = comment; let rest = l;
+      for (;;) {
+        if (comment) { const e = rest.indexOf('-->'); if (e < 0) break; comment = false; rest = rest.slice(e + 3); continue; }
+        const b = rest.indexOf('<!--'); if (b < 0) break; comment = true; rest = rest.slice(b + 4);
+      }
+      if (startedInComment) return;
+    }
     const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(l);
     if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !f[2].trim()) fence = null; return; }
     if (f && !(f[1][0] === '`' && f[2].includes('`'))) { fence = f[1]; return; }
