@@ -66,7 +66,17 @@ The skeleton is pre-filled from `plan.json`: mission, non-goals, step status, ba
 
 The test: a fresh agent reading only `handoff.md` can start immediately and finish every step without asking anything. `check --handoff` also warns about vague words and a very short file.
 
-If the plan changes after you filled in handoff.md, run `planboard export <dir> --handoff --update`: it rebuilds the file from plan.json and keeps your four filled-in parts. Then re-read "Where things stand" and "First action" in case the change affects them, and run `check --handoff` again. Plain `export --handoff` refuses to overwrite an existing file; `--force` starts over from the blank skeleton; `--out <path>` writes a new copy.
+If the plan changes after you filled in handoff.md, run `planboard export <dir> --handoff --update`: it rebuilds the file from plan.json and keeps your four filled-in parts (headings and code blocks inside them are fine). Anything else you edited by hand is replaced by the plan.json version; the previous file is saved as `handoff.md.bak`, so copy back what you still need. Then re-read "Where things stand" and "First action" in case the change affects them, and run `check --handoff` again. Plain `export --handoff` refuses to overwrite an existing file; `--force` starts over from the blank skeleton (also keeping a `.bak`); `--out <path>` writes a new copy.
+
+## Feedback after approval
+
+If the user sends more feedback after approving, the `wait` / `poll` output ends with what to do, based on what they chose:
+
+- **Build it here:** apply it and continue building, checking with `poll` between steps.
+- **plan.md / handoff.md / both:** update only the file(s) they chose (`export` for plan.md, `export --handoff --update` for handoff.md), then reply.
+- **Let the agent decide:** if you already built or wrote something, the same as above for that; if not yet, apply the feedback and then produce the output you pick.
+
+Reopening an ended review (`open --reopen`) starts a new review round: the earlier approval no longer applies and the plan goes back to `in-review`.
 
 ## Build it here (`continue`)
 

@@ -426,6 +426,22 @@ function lintSummary(r) {
 const HANDOFF_HEADINGS = ['Mission', 'Current state', 'Decisions', 'Remaining steps', 'Commands', 'How to verify', 'Gotchas', 'First action'];
 // Parts only the session can fill. Each must exist and hold real text (not just a comment).
 const HANDOFF_BLANKS = [['###', 'Where things stand'], ['###', 'Setup from a clean checkout'], ['##', 'Gotchas'], ['##', 'First action']];
+// Find one of the blanks in a handoff: its heading line and where its body ends. Headings inside fenced code
+// don't count, and a "##" part (Gotchas, First action) may contain its own "###" subheadings.
+function handoffBlank(lines, lvl, name) {
+  const heads = []; let fenced = null;
+  lines.forEach((l, k) => {
+    const f = /^\s*(`{3,}|~{3,})/.exec(l);
+    if (f) { if (!fenced) fenced = f[1][0]; else if (f[1][0] === fenced) fenced = null; return; }
+    if (!fenced) { const m = /^(#{1,6})\s/.exec(l); if (m) heads.push({ k, level: m[1].length }); }
+  });
+  const want = lvl.length;
+  const start = heads.find((x) => x.level === want && new RegExp(`^${lvl}\\s+(?:\\d+\\.\\s*)?${name}`, 'i').test(lines[x.k]));
+  if (!start) return null;
+  const next = heads.find((x) => x.k > start.k && x.level <= want);
+  const j = next ? next.k : lines.length;
+  return { i: start.k, j, body: lines.slice(start.k + 1, j).join('\n').trim() };
+}
 function lintHandoff(text) {
   const E = [], W = [];
   const todos = text.match(/TODO\(agent\)/g);
@@ -433,11 +449,9 @@ function lintHandoff(text) {
   for (const h of HANDOFF_HEADINGS) if (!new RegExp(`^##\\s+(?:\\d+\\.\\s*)?${h}`, 'mi').test(text)) E.push(`missing section "## ${h}"`);
   const lines = text.split('\n');
   for (const [lvl, name] of HANDOFF_BLANKS) {
-    const i = lines.findIndex((l) => new RegExp(`^${lvl}\\s+(?:\\d+\\.\\s*)?${name}`, 'i').test(l));
-    if (i < 0) { if (lvl === '###') E.push(`missing "${lvl} ${name}" — say ${name === 'Where things stand' ? 'what is done, the branch, and unfinished work' : 'how to install, run and test from a clean checkout'}`); continue; }
-    let j = i + 1; while (j < lines.length && !/^#{2,3}\s/.test(lines[j])) j++;
-    const body = lines.slice(i + 1, j).join('\n').replace(/<!--[\s\S]*?-->/g, '').trim();
-    if (!body) E.push(`"${name}" is empty — write it${name === 'Gotchas' ? ' ("None found" if there are none)' : ''}`);
+    const b = handoffBlank(lines, lvl, name);
+    if (!b) { if (lvl === '###') E.push(`missing "${lvl} ${name}" — say ${name === 'Where things stand' ? 'what is done, the branch, and unfinished work' : 'how to install, run and test from a clean checkout'}`); continue; }
+    if (!b.body.replace(/<!--[\s\S]*?-->/g, '').trim()) E.push(`"${name}" is empty — write it${name === 'Gotchas' ? ' ("None found" if there are none)' : ''}`);
   }
   lines.forEach((line, i) => {
     if (/^\s*<!--/.test(line)) return;
@@ -1039,22 +1053,19 @@ async function cmdStop() {
   print('Server stopped.');
 }
 // The four handoff parts only the session can write; `export --handoff --update` carries them over.
-function handoffBlank(lines, lvl, name) {
-  const i = lines.findIndex((l) => new RegExp(`^${lvl}\\s+(?:\\d+\\.\\s*)?${name}`, 'i').test(l));
-  if (i < 0) return null;
-  let j = i + 1; while (j < lines.length && !/^#{2,3}\s/.test(lines[j])) j++;
-  return { i, j, body: lines.slice(i + 1, j).join('\n').trim() };
-}
 function carryOverBlanks(fresh, old) {
   const out = fresh.split('\n'); const prev = old.split('\n'); let kept = 0;
   for (const [lvl, name] of HANDOFF_BLANKS) {
     const o = handoffBlank(prev, lvl, name); if (!o || !o.body || /TODO\(agent\)/.test(o.body)) continue;
     const n = handoffBlank(out, lvl, name); if (!n) continue;
-    out.splice(n.i + 1, n.j - n.i - 1, '', o.body, ''); kept++;
+    out.splice(n.i + 1, n.j - n.i - 1, '', ...o.body.split('\n'), ''); kept++;
   }
-  return { text: out.join('\n').replace(/\n{3,}/g, '\n\n'), kept };
+  return { text: out.join('\n'), kept };
 }
 function cmdExport(a) {
+  if (a.update && !a.handoff) fail('--update only works with --handoff (plan.md is always rebuilt from plan.json).');
+  if (a.update && a.force) fail('Use --update (rebuild handoff.md and keep your filled-in parts) or --force (start it over), not both.');
+  if ((a.force || a.update) && a.html) fail('--force and --update are for --handoff.');
   const dir = resolvePlanDir(a._[1]);
   const { plan, error } = loadPlan(dir);
   if (error) fail(error);
@@ -1073,12 +1084,21 @@ function cmdExport(a) {
   if (a.handoff) {
     const out = path.resolve(a.out || path.join(dir, 'handoff.md'));
     const exists = fs.existsSync(out);
+    if (a.update && !exists) fail(`There is no ${rel(out)} to update. Create it with: ${CMD} export ${shq(rel(dir))} --handoff${a.out ? ` --out ${shq(a.out)}` : ''}`);
     if (exists && !a.force && !a.update) fail(`${rel(out)} already exists (it may hold your filled-in notes). Use --update to rebuild it from plan.json and keep your filled-in parts, --force to start over, or --out <path>.`);
-    let text = toHandoffMd(plan, dir); let kept = 0;
-    if (exists && a.update) ({ text, kept } = carryOverBlanks(text, fs.readFileSync(out, 'utf8')));
+    let text = toHandoffMd(plan, dir); let kept = 0; let backup = null;
+    if (exists && (a.update || a.force)) {
+      const old = fs.readFileSync(out, 'utf8');
+      backup = `${out}.bak`; fs.writeFileSync(backup, old);
+      if (a.update) ({ text, kept } = carryOverBlanks(text, old));
+    }
     fs.writeFileSync(out, text);
     const checkCmd = `${CMD} check ${shq(a.out ? rel(out) : rel(dir))} --handoff`;
-    if (a.update && exists) return print(`Updated ${rel(out)} from plan.json and kept ${kept} of your 4 filled-in parts.${kept < 4 ? ' Fill the rest, then run:' : ' Re-read "Where things stand" and "First action" in case the change affects them, then run:'}\n  ${checkCmd}`);
+    if (a.update) return print(`Updated ${rel(out)} from plan.json and kept ${kept} of your 4 filled-in parts (where things stand, setup, gotchas, first action).
+Anything else you edited by hand was replaced by the plan.json version; the previous file is in ${rel(backup)} — copy back what you still need.
+${kept < 4 ? 'Fill the remaining blanks, then run:' : 'Re-read "Where things stand" and "First action" in case the change affects them, then run:'}
+  ${checkCmd}`);
+    if (backup) print(`(the previous ${path.basename(out)} is in ${rel(backup)})`);
     return print(`Wrote ${rel(out)} with everything plan.json knows.
 Now replace every TODO(agent) comment (where things stand, setup, gotchas, first action) with what you learned in this session, then run:
   ${checkCmd}`);
@@ -1240,7 +1260,7 @@ function cmdServe(a) {
     let t = null;
     const onChange = (file) => {
       const f = String(file || '');
-      if (f.startsWith('.planboard') || /\.tmp$|\.swp$|~$|^\.#/.test(f) || ['plan.md', 'handoff.md'].includes(f) || f.endsWith('.export.html')) return;
+      if (f.startsWith('.planboard') || /\.tmp$|\.swp$|~$|^\.#/.test(f) || ['plan.md', 'handoff.md'].includes(f) || f.endsWith('.export.html') || f.endsWith('.bak')) return;
       clearTimeout(t);
       t = setTimeout(() => broadcast(id, 'reload', { file: f }), 180);
     };
