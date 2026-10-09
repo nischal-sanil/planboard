@@ -1034,12 +1034,16 @@ var PB_PARSE = (() => {
       const list = [...groups.values()].find((l) => l.includes(t)); if (!list) return;
       const i = list.indexOf(t);
       const j = e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1 : ['ArrowDown', 'ArrowRight'].includes(e.key) ? Math.min(list.length - 1, i + 1) : Math.max(0, i - 1);
+      e.preventDefault();
       if (j === i) return;
-      e.preventDefault(); t.setAttribute('tabindex', '-1'); list[j].setAttribute('tabindex', '0'); list[j].focus();
+      t.setAttribute('tabindex', '-1'); list[j].setAttribute('tabindex', '0'); list[j].focus();
       list[j].scrollIntoView({ block: 'nearest', behavior: motion() });
     });
     doc.addEventListener('focusin', (e) => {
-      const t = e.target; if (pop || isEnded() || !t.matches || !t.matches('[data-pb-focus]')) return;
+      const t = e.target; if (!t.matches || !t.matches('[data-pb-focus]')) return;
+      const list = [...groups.values()].find((l) => l.includes(t));
+      if (list && !isEnded()) for (const el of list) el.setAttribute('tabindex', el === t ? '0' : '-1');
+      if (pop || isEnded()) return;
       if (hoverEl && hoverEl !== t) hoverEl.classList.remove('pb-hover-target');
       hoverEl = t; showHoverBar(t);
     });
@@ -1099,7 +1103,7 @@ var PB_PARSE = (() => {
         h('button', { class: 'pb-btn pb-btn--ghost pb-btn--sm', type: 'button', title: 'Comment on this section', html: ICON.comment + 'Comment', onclick: () => openPop(sec) }),
         h('button', { class: 'pb-btn pb-btn--ghost pb-btn--sm pb-sec-ok', type: 'button', 'data-pb-ok': sid, 'aria-pressed': 'false', title: 'Looks good — mark this section settled', html: ICON.check + 'Looks good', onclick: () => toggleLooksGood(sec) }));
       const slot = $(':scope > .pb-block__head > .pb-block__tools', sec) || $(':scope > .pb-overview__lens', sec);
-      if (slot) slot.append(tools);
+      if (slot) slot.prepend(tools);
       else { const hd = $(':scope > h1, :scope > h2, :scope > h3', sec) || $('h1, h2, h3', sec); tools.classList.add('pb-sec-tools--float'); (hd || sec).prepend(tools); }
     }
   }
@@ -1132,7 +1136,9 @@ var PB_PARSE = (() => {
     if (!el) return '';
     if (el.getAttribute && el.getAttribute('data-pb-label')) return el.getAttribute('data-pb-label');
     if (el.hasAttribute && el.hasAttribute('data-pb-section')) return sectionTitle(el);
-    return short(el.textContent, 80);
+    const c = el.cloneNode(true);
+    for (const x of c.querySelectorAll('button, .pb-sec-tools, .pb-delta, .pb-diagram__bar, .pb-item__actions')) x.remove();
+    return short(c.textContent, 80);
   }
   function describe(el) {
     if (!el || el.id === 'pb-doc') return { kind: 'page', label: 'the page' };
@@ -1146,8 +1152,11 @@ var PB_PARSE = (() => {
     }
     return { kind: 'section', section: sid, label: sectionTitle(el) };
   }
+  let popOpener = null;
   function openPop(targetEl, quote, rect) {
+    const from = document.activeElement;
     closePop(); hideHoverBar();
+    popOpener = from && from !== document.body ? from : targetEl;
     if (isEnded()) { toast('This review has ended.', true); return; }
     const t = describe(targetEl);
     let pmode = 'change';
@@ -1185,7 +1194,14 @@ var PB_PARSE = (() => {
     setTimeout(() => document.addEventListener('mousedown', popOutside), 0);
   }
   function popOutside(e) { if (pop && !pop.contains(e.target) && !$('textarea', pop).value.trim()) closePop(); }
-  function closePop() { if (pop) { pop.remove(); pop = null; store.del(K.draft + ':pop', true); } document.removeEventListener('mousedown', popOutside); }
+  function closePop() {
+    if (pop) {
+      const hadFocus = pop.contains(document.activeElement);
+      pop.remove(); pop = null; store.del(K.draft + ':pop', true);
+      if (hadFocus && popOpener && document.contains(popOpener) && popOpener.focus) popOpener.focus({ preventScroll: true });
+    }
+    document.removeEventListener('mousedown', popOutside);
+  }
 
   // ---------- approve / end ----------
   // Modal dialogs: focus moves in and stays in (Tab cycles), Escape or the backdrop closes, focus returns after.
