@@ -11,7 +11,7 @@ Right after the overview, show the one picture that makes the plan click. Ask: "
 | A flow changes (login, checkout, a job pipeline) | Sequence diagram of the new flow, new participants marked `:::new` |
 | Parts are added or rewired | Flowchart of the system, `:::new` / `:::changed` / `:::external` nodes |
 | A bug | The failing path with the exact point it breaks, plus the evidence (log line, stack trace, repro) |
-| A refactor or migration | Before / after side by side (`pb-split`) |
+| A refactor or migration | Before / after: side by side (`pb-split`) for a tree, a mock or a code shape; diagrams stacked, today above, after below |
 | UI work | A mock of the screen, with numbered pins for what changes |
 | A new project | Architecture flowchart |
 | A non-code project | Deliverables and a timeline |
@@ -35,7 +35,7 @@ Put the things the user must act on early. They should not have to scroll past t
 | Parts and how they connect | Flowchart | `pre.pb-diagram` `flowchart` |
 | Branching logic | Flowchart with `{diamond}` decisions | `pre.pb-diagram` |
 | Two or more options across the same criteria | Table, recommended row marked | `pb-table`, `tr.is-rec`, `td[data-v]` |
-| Current vs target | Side by side | `pb-split` |
+| Current vs target | Side by side (stack them if they are diagrams) | `pb-split` |
 | Events over time | Timeline | `pb-timeline` |
 | A folder layout | Tree | `pb-tree` |
 | A screen | Mock with pins | `pb-mock`, `pb-pin` |
@@ -99,7 +99,7 @@ The same goes for a decision about storage under the architecture diagram, or an
 
 - One idea per section. If a section needs two headings, it is two sections.
 - A diagram stays readable at about 12 nodes or 10 messages. Past that, split it ("Request a link" and "Use the link") or zoom out and show detail separately.
-- **Wide diagrams:** the content column is about 960 px, and half of that inside a `pb-split` or a 2-column grid. Never put a sequence diagram or a wide flowchart inside `pb-split` or `pb-grid`: stack the before and after diagrams one above the other with a heading each, or put them in `pb-tabs` ("Today" / "After this plan"). Keep sequence diagrams to about 5 participants per row, use short participant aliases (`participant K as adk_core_client`), and keep message labels to a few words. Users can press Expand on any diagram, but the page should read without it.
+- **Wide diagrams:** the content column is about 960 px, and half of that inside a `pb-split` or a 2-column grid. Never put a sequence diagram or a left-to-right flowchart inside `pb-split` or `pb-grid` (`check` warns): stack the before and after diagrams one above the other in the same section, each labelled with `data-caption` ("Today", "After this plan"). Keep each diagram within about 900 px: for a sequence diagram that is about 6 participants with short aliases (`participant K as adk_core_client`) and message labels of a few words. If it is still wider, split the flow into two diagrams. Users can press Expand on any diagram (and step between the diagrams of a section there), but the page should read without it.
 - Diagram labels: 2–5 words. Put explanations in the caption or the text next to it.
 - Tables: up to about 6 columns. More than that, transpose or split.
 - Paragraphs: 3–4 sentences, then a break or a list.

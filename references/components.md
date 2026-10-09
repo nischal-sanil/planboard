@@ -100,7 +100,7 @@ Also available: `pb-tag--edit` (= changed), `pb-tag--delete` (= removed), `pb-ta
 </div>
 ```
 
-`data-label` defaults to "Before" / "After". Stacks vertically below 760 px. Put anything inside: a diagram, a tree, a mock, code.
+`data-label` defaults to "Before" / "After". Stacks vertically below 760 px. Good inside: a tree, a mock, a code shape, a short list. Not a sequence diagram or a left-to-right flowchart: at half width they don't fit, so stack those instead (`check` warns).
 
 ## Timeline
 

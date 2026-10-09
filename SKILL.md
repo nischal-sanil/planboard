@@ -38,7 +38,7 @@ Keep terminal messages to one or two lines while the page is open; the page and 
 - Lead with the one picture that makes the plan click (a sequence for a flow, an architecture with new/changed parts colored, a before/after for a refactor, a mock for UI work). Then the details.
 - Pick the form by the shape of the information: sequence → diagram; comparison → table; time → timeline; structure → tree or flowchart; UI → mock; exact interface → code block. A paragraph is fine when it is genuinely the clearest form.
 - Put a question or decision right next to the visual it affects: `<div data-pb="question:q1"></div>`.
-- Give wide diagrams the full width: never put a sequence diagram or wide flowchart inside a side-by-side `pb-split` or grid; stack before/after diagrams or use `pb-tabs` (`references/design.md`, "Wide diagrams").
+- Give wide diagrams the full width: never put a sequence diagram or left-to-right flowchart inside a side-by-side `pb-split` or grid; stack before/after diagrams one above the other, each with a `data-caption` (`references/design.md`, "Wide diagrams").
 - Mark anything in your own sections the user may want to point at with `data-pb-id="..."` (and `data-pb-label` for a readable name), so their comments land precisely.
 - Colours mean the same thing on every plan: marigold = needs the user, teal Δ = changed since their last feedback, green = new/done, blue = modified, red = removed/risk, purple = moved, grey = external. Use the provided classes rather than inventing colours.
 - The page must work offline: the server blocks anything loaded from the internet (scripts, styles, fonts, images). Use the built-in `pb-diagram` renderer, inline SVG, and local files next to plan.html.

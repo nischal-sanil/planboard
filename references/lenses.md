@@ -40,7 +40,7 @@ Steps start from an empty directory: the exact scaffold command, versions pinned
 
 Must show:
 
-- **Before and after.** The current shape and the target shape side by side (`pb-split`): module structure, data model, call graph, or API. Section id: `before-after`.
+- **Before and after.** The current shape and the target shape: module structure, data model, call graph, or API. Small shapes (a folder tree, a schema, a code signature) go side by side in a `pb-split`; diagrams go one above the other, today first, each with a `data-caption` (see "Wide diagrams" in `design.md`). Section id: `before-after`.
 - **Rollout order.** The sequence that keeps everything working at each step: expand → migrate → contract. Say which steps can ship on their own. A `pb-timeline` or a numbered `pb-flow` works. Section id: `rollout`.
 - **Compatibility window.** What runs side by side and for how long: old and new code paths, dual writes, a feature flag, a deprecated endpoint kept alive. Give the end condition ("remove `legacy_user_id` after 7 days with zero reads in `pg_stat_statements`").
 - **Rollback.** How to undo each step, how long it takes, and the point after which rollback is no longer simple (for example once old columns are dropped). Put it in `plan.json` `sections` with id `rollback`, so it reaches plan.md, and place it on the page with `<div data-pb="section:rollback"></div>`. Don't also write a `data-pb-section="rollback"` section in plan.html: section ids are shared between the two files, and `check` reports the duplicate.

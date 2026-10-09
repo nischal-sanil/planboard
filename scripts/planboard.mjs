@@ -202,6 +202,31 @@ function diagramParsers() {
 }
 const decodeEntities = (s) => s.replace(/&(lt|gt|quot|#39|amp);/g, (_, e) => ({ lt: '<', gt: '>', quot: '"', '#39': "'", amp: '&' }[e]));
 
+// Sequence diagrams and left-to-right flowcharts placed inside a pb-split or pb-grid (by element nesting).
+function diagramsBesideEachOther(html) {
+  const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
+  const body = String(html || '').replace(/<!--[\s\S]*?-->/g, '').replace(/<(script|style)\b((?:[^>"']|"[^"]*"|'[^']*')*)>[\s\S]*?<\/\1>/gi, '');
+  const stack = []; const out = []; let n = 0;
+  const re = /<(\/?)([a-zA-Z][\w:-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g; let m;
+  while ((m = re.exec(body))) {
+    const [, close, tag0, attrs] = m; const tag = tag0.toLowerCase();
+    if (close) { const i = stack.map((x) => x.tag).lastIndexOf(tag); if (i >= 0) stack.length = i; continue; }
+    const cls = (/\bclass\s*=\s*["']([^"']*)["']/.exec(attrs) || [])[1] || '';
+    if (tag === 'pre' && /\bpb-diagram\b/.test(cls)) {
+      n++;
+      const end = body.indexOf('</pre>', re.lastIndex);
+      const srcm = /data-src\s*=\s*"([^"]*)"/.exec(attrs);
+      const src = decodeEntities(srcm ? srcm[1] : body.slice(re.lastIndex, end < 0 ? undefined : end));
+      const first = (src.split('\n').find((l) => l.trim() && !l.trim().startsWith('%%')) || '').trim();
+      const wide = /^sequenceDiagram/i.test(first) || /^(?:flowchart|graph)\s+(?:LR|RL)\b/i.test(first);
+      if (wide && stack.some((x) => /(?:^|\s)(?:pb-split|pb-grid)(?:\s|$|--)/.test(x.cls))) { const id = /data-pb-id\s*=\s*["']([^"']+)["']/.exec(attrs); out.push(id ? `"${id[1]}"` : `#${n}`); }
+      if (end >= 0) re.lastIndex = end + 6;
+      continue;
+    }
+    if (!VOID.has(tag) && !/\/\s*$/.test(attrs)) stack.push({ tag, cls });
+  }
+  return out;
+}
 function lintPlan(plan, htmlText = '') {
   const E = [], W = [];
   const err = (where, msg) => E.push(`${where}: ${msg}`);
@@ -396,6 +421,9 @@ function lintPlan(plan, htmlText = '') {
     } catch (e) { err(dname, e.message); }
     if (!idm) warn(`plan.html diagram #${dn}`, 'no data-pb-id — give it a stable id so comments on its nodes survive edits');
   }
+
+  // wide diagrams squeezed into a side-by-side layout
+  for (const name of diagramsBesideEachOther(htmlText)) warn(`plan.html diagram ${name}`, 'is inside a side-by-side layout (pb-split / pb-grid), where it gets half the width — stack the diagrams one above the other (design.md, "Wide diagrams")');
 
   // lens expectations
   const sectionIds = new Set(secSeen.keys());
@@ -906,7 +934,7 @@ function endedText(by, dir) {
 const LENS_HINTS = {
   feature: 'Feature or bug: show the flow that changes (pb-diagram sequence or flowchart with :::new / :::changed nodes), the shape of the data or API (pb-code), and for bugs the root cause with evidence.',
   'new-project': 'New project: show the architecture (pb-diagram flowchart), the stack choices as decisions, the folder layout (pb-tree), and milestones (pb-timeline). Use section ids "architecture" and "milestones".',
-  refactor: 'Refactor or migration: show before vs after side by side (pb-split, section id "before-after"), the rollout order, and a rollback plan as a plan.json section with id "rollback" (so it reaches plan.md; place it here with <div data-pb="section:rollback"></div>).',
+  refactor: 'Refactor or migration: show before vs after (section id "before-after"): small shapes side by side in a pb-split, diagrams stacked one above the other with data-caption "Today" / "After this plan"; the rollout order, and a rollback plan as a plan.json section with id "rollback" (so it reaches plan.md; place it here with <div data-pb="section:rollback"></div>).',
   'non-code': 'Non-code project: show deliverables (section id "deliverables"), a timeline (pb-timeline), who does what (pb-table), and any budget or numbers as a small table. Put the numbers in a plan.json section too, so they reach plan.md.',
   generic: 'Pick the form that fits: diagram for structure or flow, table for comparisons, timeline for sequence in time, mock for UI, code for exact shapes.',
 };
