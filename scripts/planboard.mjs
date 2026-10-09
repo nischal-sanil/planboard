@@ -1553,7 +1553,7 @@ function cmdServe(a) {
     if (p === '/_api/state') {
       const tab = String(url.searchParams.get('tab') || ''), nonce = String(url.searchParams.get('nonce') || '').slice(0, 64);
       const sec = tab && tabSecrets[id] && tabSecrets[id][tab];
-      return json(res, 200, { ...stateFor(id, dir), dir, status: statusOf(id), draft: readJSON(stPath(dir, 'draft.json'), null), tabProof: sec && nonce ? tokenProof(sec.secret, nonce) : null });
+      return json(res, 200, { ...stateFor(id, dir), dir, status: statusOf(id), draft: readJSON(stPath(dir, 'draft.json'), null), tabProof: sec && nonce ? tokenProof(sec.secret, `${nonce}:${req.socket.localPort}`) : null });
     }
     if (p === '/_api/hello' && req.method === 'POST') {
       const b = await readBody(req, 4000);
@@ -1561,7 +1561,8 @@ function cmdServe(a) {
       if (!/^[\w-]{6,64}$/.test(tab) || !/^[\w-]{16,128}$/.test(secret)) return json(res, 400, { error: 'bad hello' });
       const mine = tabSecrets[id] = tabSecrets[id] || {};
       mine[tab] = { secret, at: Date.now() };
-      for (const k of Object.keys(mine).sort((x, y) => mine[y].at - mine[x].at).slice(30)) delete mine[k]; // keep the 30 newest tabs
+      // keep tabs from the last 60 days, at most 200 per plan
+      for (const k of Object.keys(mine).sort((x, y) => mine[y].at - mine[x].at).filter((k, n) => n >= 200 || Date.now() - mine[k].at > 60 * 86400_000)) delete mine[k];
       writeJSON(TABS_FILE, tabSecrets);
       return json(res, 200, { ok: true });
     }

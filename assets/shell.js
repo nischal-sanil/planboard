@@ -1829,16 +1829,19 @@ var PB_PARSE = (() => {
   function scheduleCheck() {
     clearTimeout(checkT);
     checkT = setTimeout(async () => {
-      if (connected || moved) return;
-      const st = await verifyServer();
-      if (st && es && es.readyState === 2) { wasDown = false; connect(); if (st.version !== S.version) softReload(); }
-      else if (!st && !moved) scheduleCheck();
-    }, 4000);
+      if (connected) return;
+      const wasMoved = moved;
+      const st = await verifyServer(); // also clears "moved" if this plan's server is back at this address
+      if (st && !wasMoved && es && es.readyState === 2) { wasDown = false; connect(); }
+      if (st && st.version !== S.version) return softReload();
+      if (!st) scheduleCheck();
+    }, moved ? 8000 : 4000);
   }
   // After a lost connection, make sure the server now answering at this address is this plan's planboard
   // (the plan may have moved to another port and something else taken this one). Returns its state or null.
   // This tab's secret, registered with the server that served the page. Only that server can later prove it.
-  const tab = { id: rid() + rid(), secret: rid() + rid() + rid() + rid(), registered: false };
+  const rnd = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const tab = { id: rnd(12), secret: rnd(32), registered: false };
   async function hello() {
     try { const r = await fetch(API('hello'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tab: tab.id, secret: tab.secret }) }); tab.registered = r.ok; } catch { }
   }
@@ -1850,11 +1853,19 @@ var PB_PARSE = (() => {
     let st; const nonce = rid() + rid();
     try { const r = await fetch(API(`state?tab=${tab.id}&nonce=${nonce}`), { cache: 'no-store' }); st = await r.json().catch(() => null); }
     catch { return null; } // nothing answers: the server is just down, keep retrying
-    const ok = st && st.app === 'planboard' && st.id === ID && (!tab.registered || (st.tabProof && st.tabProof === (await sha256hex(`${tab.secret}:${nonce}`).catch(() => ''))));
-    if (ok) { trusted = true; if (!tab.registered) hello(); return st; }
-    if (es) es.close();
-    moved = true; connected = false; updateTop();
-    if (!$('#pb-moved')) $('#pb-doc').prepend(h('div', { class: 'pb-banner pb-banner--error', id: 'pb-moved', text: "This page lost its planboard server, and something else now answers at this address. The plan probably moved to a new address: ask the agent to run planboard open and use the link it prints. Your unsent feedback is saved and will be there." }));
+    // the proof covers this page's port, so a program relaying from this port to the real server fails it
+    const ok = st && st.app === 'planboard' && st.id === ID && (!tab.registered || (st.tabProof && st.tabProof === (await sha256hex(`${tab.secret}:${nonce}:${location.port}`).catch(() => ''))));
+    if (ok) {
+      trusted = true; if (!tab.registered) hello();
+      if (moved) { moved = false; $('#pb-moved')?.remove(); wasDown = false; connect(); }
+      return st;
+    }
+    if (!moved) {
+      if (es) es.close();
+      moved = true; connected = false; updateTop();
+      if (!$('#pb-moved')) $('#pb-doc').prepend(h('div', { class: 'pb-banner pb-banner--error', id: 'pb-moved', text: "This page can't confirm that the server at this address is still this plan's planboard, so it won't send anything here. The plan probably moved: ask the agent to run planboard open and use the link it prints. If you know the plan is still here (for example planboard was just restarted), reload the page. Your unsent feedback is saved either way." }));
+      scheduleCheck();
+    }
     return null;
   }
   function softReload() {
