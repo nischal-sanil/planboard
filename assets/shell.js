@@ -256,6 +256,9 @@ var PB_PARSE = (() => {
     status = S.status || null;
     queue = store.get(K.queue, []);
     if (!queue.length && S.draft && Array.isArray(S.draft.queue) && S.draft.queue.length) { queue = S.draft.queue; store.set(K.queue, queue); }
+    // drop anything another tab or browser already sent after it was queued here
+    const sentAfter = (i) => S.transcript.some((e) => e.from === 'user' && e.kind === 'batch' && e.at > (i.at || 0) && e.items.some((x) => x.key === i.key));
+    if (queue.some(sentAfter)) { queue = queue.filter((i) => !sentAfter(i)); store.set(K.queue, queue); }
     document.body.classList.add('pb-on');
     if (PLAN.title && (!document.title || /^\s*$/.test(document.title))) document.title = PLAN.title;
     captureOriginals();
@@ -1740,6 +1743,11 @@ var PB_PARSE = (() => {
     es.addEventListener('transcript', (e) => {
       const d = JSON.parse(e.data);
       if (d.entry && !S.transcript.some((x) => x.id === d.entry.id)) S.transcript.push(d.entry);
+      // something was sent (here or from another browser): it no longer needs sending from this tab
+      if (d.entry && d.entry.from === 'user' && d.entry.kind === 'batch') {
+        const keys = new Set(d.entry.items.map((x) => x.key));
+        if (queue.some((i) => keys.has(i.key))) { queue = queue.filter((i) => !keys.has(i.key)); saveQueue(); onQueueChanged(); }
+      }
       if (d.delivered) for (const x of S.transcript) if (d.delivered.includes(x.id)) x.delivered = d.at;
       renderConvo(); refreshStates(); updateNavBadges();
       if (d.entry && d.entry.from === 'agent') { if (innerWidth <= 980) { elSide.classList.add('is-open'); convoToEnd(); } else if (elApp.classList.contains('pb-side-closed')) toast('The agent replied. Open the conversation to read it.'); }
