@@ -334,7 +334,11 @@ function lintPlan(plan, htmlText = '') {
     if (codeLens && !(Array.isArray(s.files) && s.files.length) && !strArr(s.commands).length) warn(w, 'names no files or commands — which exact files does this touch?');
     if (String(s.detail || '').length > 1800) warn(w, 'detail is very long — split into smaller steps');
   });
-  if (steps.length > 15 && !steps.every((x) => x && typeof x.phase === 'string' && x.phase.trim())) warn('steps', `${steps.length} steps — give every step a "phase" (the page and plan.md group them under it) or split the plan`);
+  const phased = steps.filter((x) => x && typeof x.phase === 'string' && x.phase.trim());
+  if (steps.length > 15 && phased.length < steps.length) warn('steps', `${steps.length} steps — give every step a "phase" (the page and plan.md group them under it) or split the plan`);
+  else if (phased.length && phased.length < steps.length) warn('steps', `${steps.length - phased.length} step(s) have no "phase" while others do — give every step one, or none`);
+  { const seen = new Set(); let prev = null;
+    for (const x of steps) { const ph = x && x.phase; if (ph && ph !== prev && seen.has(ph)) warn(`steps[${x.id}]`, `phase "${ph}" appears again after another phase — keep each phase's steps together`); if (ph) seen.add(ph); prev = ph || null; } }
 
   list(plan.risks, 'risks').forEach((r, i) => {
     const w = seeId('risks', r, i, 'risk'); if (!w) return;
@@ -471,8 +475,8 @@ function fence(lines) { const run = Math.max(0, ...lines.map((l) => Math.max(0, 
 function mdSteps(steps, nums) {
   const L = []; let phase = null;
   for (const s of steps) {
-    if (s.phase && s.phase !== phase) { L.push(`**Phase: ${oneLine(s.phase, 200)}**`, ''); }
-    phase = s.phase || phase;
+    if (s.phase && s.phase !== phase) L.push(`**Phase: ${oneLine(s.phase, 200)}**`, '');
+    phase = s.phase || null;
     L.push(mdStep(s, nums.get(s.id), nums));
   }
   return L;

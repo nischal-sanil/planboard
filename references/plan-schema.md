@@ -142,7 +142,7 @@ List fields (`files`, `commands`, `done_when`, `depends_on`, and at the top leve
 | `size` | `S` \| `M` \| `L` | S under an hour, M a few hours, L a day or more. |
 | `status` | `todo` \| `doing` \| `done` \| `skipped` | default `todo`. Update it while building; the page shows progress live. |
 | `notes` | markdown | |
-| `phase` | string | Optional group name ("Backend", "Rollout"). The page and plan.md show a heading whenever it changes. Required on every step once a plan has more than 15 steps. |
+| `phase` | string | Optional group name ("Backend", "Rollout"). The page and plan.md show a heading whenever it changes. Give every step a phase or none, and keep each phase's steps together (`check` warns otherwise). Required on every step once a plan has more than 15 steps. |
 
 For `feature`, `refactor`, and `new-project` lenses, `check` warns about a step that names no files and no commands.
 

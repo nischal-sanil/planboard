@@ -338,7 +338,7 @@ var PB_PARSE = (() => {
     if (kind === 'assumption') return renderAssumption(it);
     if (kind === 'risk') return renderRisk(it);
     if (kind === 'section') return renderPlanSection(it);
-    if (kind === 'step') { const i = PLAN.steps.indexOf(it); return h('ol', { class: 'pb-steps', start: i + 1 }, renderStep(it, i)); }
+    if (kind === 'step') { const i = PLAN.steps.indexOf(it); return h('ol', { class: 'pb-steps', start: i + 1 }, it.phase ? h('li', { class: 'pb-phase', role: 'presentation', text: it.phase }) : null, renderStep(it, i)); }
   }
   function block(id, title, meta, ...kids) {
     return h('section', { class: `pb-block pb-block--${id}`, 'data-pb-section': id, 'data-pb-title': title, id: `pb-sec-${id}` },
@@ -370,7 +370,7 @@ var PB_PARSE = (() => {
         let phase = null;
         const list = h('ol', { class: 'pb-steps' + (store.get(K.compact, false) ? ' is-compact' : '') }, steps.filter(notInline('step')).map((s) => {
           const head = s.phase && s.phase !== phase ? h('li', { class: 'pb-phase', role: 'presentation', text: s.phase }) : null;
-          phase = s.phase || phase;
+          phase = s.phase || null;
           return [head, renderStep(s, steps.indexOf(s))];
         }));
         const b = block('steps', 'Steps', `${steps.length} step${steps.length > 1 ? 's' : ''}${done ? ` · ${done} done` : ''}`, list);
