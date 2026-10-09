@@ -614,7 +614,13 @@ details.pb-more > :not(summary) { margin: 0 14px 12px; }
 .pb-zoom__head { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; padding: 10px 16px; background: var(--pb-paper); border-bottom: 1px solid var(--pb-rule); }
 .pb-zoom__title { font-size: 15px; }
 .pb-zoom__help { font-size: 12.5px; color: var(--pb-ink-3); }
-.pb-zoom__tools { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.pb-zoom__tools { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; max-width: 100%; }
+/* phones: drop the help line, keep Close first so it is always on screen */
+@media (max-width: 700px) {
+  .pb-zoom__help { display: none; }
+  .pb-zoom__title { flex: 1 1 100%; }
+  .pb-zoom__close { order: -1; }
+}
 .pb-zoom__pct { min-width: 46px; text-align: center; font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--pb-ink-2); }
 .pb-zoom__body { flex: 1; min-height: 0; overflow: auto; padding: 24px; display: grid; cursor: grab; overscroll-behavior: contain; }
 .pb-zoom__body.is-dragging { cursor: grabbing; user-select: none; }

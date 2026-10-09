@@ -1358,10 +1358,10 @@ var PB_PARSE = (() => {
   }
   // Full-screen view of one diagram. The real figure moves into the overlay (inside the page), so its
   // comment targets, Δ marks and keyboard focus keep working; it moves back on close.
-  function expandDiagram(fig) {
+  function expandDiagram(fig, from) {
     if ($('#pb-zoom')) return;
     const svg = $(':scope > svg', fig); if (!svg) return;
-    const opener = document.activeElement; const sx = scrollX, sy = scrollY;
+    const opener = from || document.activeElement; const sx = from ? from._pbScroll[0] : scrollX, sy = from ? from._pbScroll[1] : scrollY;
     // other diagrams in the same section, so before/after pairs can be flipped through without closing
     const sec = topSections().find((x) => x.contains(fig));
     const siblings = sec ? $$('figure.pb-diagram.is-rendered', sec) : [fig];
@@ -1384,11 +1384,13 @@ var PB_PARSE = (() => {
     const name = (f) => f.getAttribute('data-caption') || f.getAttribute('data-pb-label') || 'Diagram';
     const title = name(fig);
     let close;
-    const closeBtn = btn('Close', 'Close (Esc)', () => close(), 'pb-btn--primary');
-    const go = (k) => { const other = siblings[k]; close(false); expandDiagram(other); };
+    const closeBtn = btn('Close', 'Close (Esc)', () => close(), 'pb-btn--primary pb-zoom__close');
+    const narrow = innerWidth < 700;
+    // stepping to another diagram keeps the original opener and page scroll for the final close
+    const go = (k) => { const other = siblings[k]; const o = opener && document.contains(opener) ? opener : $('.pb-diagram__expand', fig); close(false); if (o) o._pbScroll = [sx, sy]; expandDiagram(other, o); };
     const nav = siblings.length > 1 ? h('span', { class: 'pb-zoom__nav' },
-      at > 0 ? btn(`‹ ${esc(short(name(siblings[at - 1]), 24))}`, 'Previous diagram in this section', () => go(at - 1)) : null,
-      at < siblings.length - 1 ? btn(`${esc(short(name(siblings[at + 1]), 24))} ›`, 'Next diagram in this section', () => go(at + 1)) : null) : null;
+      at > 0 ? btn(narrow ? '‹' : `‹ ${esc(short(name(siblings[at - 1]), 24))}`, `Previous diagram: ${name(siblings[at - 1])}`, () => go(at - 1)) : null,
+      at < siblings.length - 1 ? btn(narrow ? '›' : `${esc(short(name(siblings[at + 1]), 24))} ›`, `Next diagram: ${name(siblings[at + 1])}`, () => go(at + 1)) : null) : null;
     const box = h('div', { class: 'pb-zoom', id: 'pb-zoom', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Diagram: ${title}` },
       h('div', { class: 'pb-zoom__head' },
         h('b', { class: 'pb-zoom__title', text: siblings.length > 1 ? `${title} (${at + 1} of ${siblings.length})` : title }),
