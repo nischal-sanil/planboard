@@ -14,7 +14,7 @@ First, every time:
 3. Run `planboard check <dir>` and fix errors. `export` refuses while plan.json has errors (for `--html`, plan.html errors too); `--skip-check` overrides that, but the output will be wrong where the errors are. Open questions or decisions don't block approval; they are listed as open in the outputs.
 4. Produce the chosen output (below).
 5. Post the result with `planboard reply <dir> "…"` (format at the end of this file).
-6. Don't run `wait` again unless the user asks for more review. Don't end the review yourself; the page stays readable.
+6. Keep listening so comments the user adds later reach you: after writing plan.md or handoff.md, start `planboard wait <dir> --background` again; when building here, `poll` between steps instead. Don't end the review yourself; the page stays readable, and the user can end it.
 
 In every command, `planboard` means `node <skill dir>/scripts/planboard.mjs`.
 

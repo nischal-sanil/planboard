@@ -918,7 +918,10 @@ function formatFeedback(r, dir, { after = null } = {}) {
     if (items.some((i) => i !== approve && isChangeItem(i))) L.push('- The approval came with the changes above: apply them first. If one leaves a step without a valid basis (e.g. a rejected assumption with no correction), add an open question to plan.json instead of guessing, and say so in your reply.');
     if (approve.text) L.push('- Record the approval note in plan.json (in `context`, or in the step it concerns) so it reaches plan.md / handoff.md.');
     L.push(`- APPROVED: set plan.json "status": "approved", run \`${CMD} check ${D}\`, then produce "${OUTPUTS[approve.output] || approve.output}" following ${REFS}/outputs.md.`);
-    L.push(`  Then post the result with \`${CMD} reply ${D} "<where the output is and what happens next>"\`. Don't run wait again unless the user asks for more review${approve.output === 'continue' || approve.output === 'agent' ? `; while building, check for comments between steps with: ${poll}` : ''}.`);
+    L.push(`  Then post the result with \`${CMD} reply ${D} "<where the output is and what happens next>"\`.`);
+    L.push(approve.output === 'continue'
+      ? `  While building, check for comments between steps with: ${poll}`
+      : `  Then keep listening in the background, so comments the user adds later still reach you: ${CMD} wait ${D} --background${approve.output === 'agent' ? ` (if you choose to build here instead, check between steps with: ${poll})` : ''}`);
   } else if (userEnded) {
     L.push(`- The user ended the review. Apply what is above, then continue in the terminal. Don't run wait or reopen the page unless they ask.`);
   } else if (r.ended) {
@@ -931,11 +934,13 @@ function formatFeedback(r, dir, { after = null } = {}) {
     L.push(`- Run \`${CMD} check ${D}\` and fix errors.`);
     const how = { 'plan.md': `\`${CMD} export ${D}\` (rebuilds plan.md)`, 'handoff.md': `\`${CMD} export ${D} --handoff --update\` (rebuilds handoff.md, keeps your filled-in parts)` };
     L.push(`- The plan is approved and ${after.files.join(' and ')} ${after.files.length > 1 ? 'are' : 'is'} the output: bring ${after.files.length > 1 ? 'them' : 'it'} up to date with ${after.files.map((f) => how[f]).join(' and ')}.`);
-    L.push(`- Reply in the page: \`${CMD} reply ${D} "<what you changed>"\`. Don't run wait unless the user asks for more review.`);
+    L.push(`- Reply in the page: \`${CMD} reply ${D} "<what you changed>"\`.`);
+    L.push(`- ${listenAgain(D)}`);
   } else if (after && after.mode === 'pick') {
     L.push(`- Run \`${CMD} check ${D}\` and fix errors.`);
     L.push(`- The user approved the plan and let you choose the output, and you haven't produced one yet: apply the feedback above, then pick and produce it following ${REFS}/outputs.md.`);
     L.push(`- Reply in the page: \`${CMD} reply ${D} "<what you changed>"\`.`);
+    L.push(`- ${listenAgain(D)}`);
   } else {
     L.push(`- Run \`${CMD} check ${D}\` and fix errors.`);
     L.push(`- Reply in the page: \`${CMD} reply ${D} "<what you changed, answers to ASK items>"\` (use --file for long replies).`);
