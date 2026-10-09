@@ -1382,10 +1382,17 @@ function cmdServe(a) {
     })());
     return listeners.get(id);
   };
-  const planUrl = async (id) => `http://${HOST}:${await planPort(id)}/`;
+  // A plan page lives under a secret path, /<key>/, so other local users and processes can't read the plan or
+  // its conversation through its port; only the link that `open` prints (to this user) works.
+  const KEYS_FILE = path.join(HOME, 'page-keys.json');
+  const pageKeys = readJSON(KEYS_FILE, {});
+  const pageKey = (id) => { if (!pageKeys[id]) { pageKeys[id] = crypto.randomBytes(16).toString('hex'); writeJSON(KEYS_FILE, pageKeys); } return pageKeys[id]; };
+  const planUrl = async (id) => `http://${HOST}:${await planPort(id)}/${pageKey(id)}/`;
   const ensureSession = (dir) => {
     const id = sessionId(dir);
     if (sessions[id] !== dir) { sessions[id] = dir; writeJSON(SESS_FILE, sessions); }
+    // review state written by older versions may still be world-readable
+    try { const st = path.join(dir, '.planboard'); fs.chmodSync(st, 0o700); for (const f of fs.readdirSync(st)) { try { fs.chmodSync(path.join(st, f), fs.statSync(path.join(st, f)).isDirectory() ? 0o700 : 0o600); } catch { } } } catch { }
     watch(id, dir);
     return id;
   };
@@ -1453,9 +1460,8 @@ function cmdServe(a) {
     if (p === '/' || p === '') return send(res, 200, 'planboard is running. Open a plan from the terminal: planboard open <plan folder>');
     const agent = /^\/p\/([0-9a-f]{10})\/_api\/(wait|reply|end|ack)$/.exec(p);
     if (!agent && !['/_api/register', '/_api/sessions', '/_api/shutdown'].includes(p)) {
-      // an old /p/<id>/ link: send it to the plan's own address
-      const old = /^\/p\/([0-9a-f]{10})(\/.*)?$/.exec(p);
-      if (old && sessions[old[1]] && req.method === 'GET' && !(old[2] || '').startsWith('/_api')) { res.writeHead(302, { location: (await planUrl(old[1])) + (old[2] || '/').slice(1) }); return res.end(); }
+      // an old /p/<id>/ link: the address now includes a secret, so don't redirect (that would hand it out)
+      if (/^\/p\/[0-9a-f]{10}(\/|$)/.test(p)) return send(res, 410, 'This plan link is out of date. Ask the agent to run planboard open and use the link it prints.');
       return send(res, 404, 'Not found');
     }
     if (!hasToken(req)) return json(res, 403, { error: 'Forbidden: agent routes need the planboard token' });
@@ -1541,18 +1547,23 @@ function cmdServe(a) {
     const dir = sessions[id];
     if (!dir) return send(res, 404, 'This plan is no longer open. Open it again from the terminal.');
     const own = req.socket.localPort;
+    const prefix = `/${pageKey(id)}`;
+    if (url.pathname !== prefix && !url.pathname.startsWith(prefix + '/')) {
+      return send(res, 404, '<!doctype html><meta charset="utf-8"><title>Plan link changed</title><p style="font:15px system-ui;margin:40px">This plan link is out of date or incomplete. Ask the agent to run <code>planboard open</code> and use the link it prints.</p>', 'text/html; charset=utf-8');
+    }
+    if (url.pathname === prefix) { res.writeHead(302, { location: prefix + '/' }); return res.end(); }
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       // Only this plan's own page may post here (pages of other plans live on other ports, i.e. other origins).
       const origin = req.headers.origin;
       if (origin && !new RegExp(`^http://(127\\.0\\.0\\.1|localhost|\\[::1\\]):${own}$`).test(origin)) return send(res, 403, 'Forbidden origin');
       if (!/^application\/json\b/i.test(String(req.headers['content-type'] || ''))) return send(res, 415, 'Expected application/json');
     }
-    const p = url.pathname;
+    const p = url.pathname.slice(prefix.length);
     if (p === '/' || p === '/index.html') {
       let html;
       try { html = fs.readFileSync(path.join(dir, 'plan.html'), 'utf8'); } catch { const { plan } = loadPlan(dir); html = defaultPage(plan && plan.title); }
-      const head = `${PB_STUB}<link rel="stylesheet" href="/_pb/shell.css?v=${VERSION}">`;
-      const tail = `<script>window.__PB_ID__=${JSON.stringify(id)};</script><script src="/_pb/shell.js?v=${VERSION}"></script>`;
+      const head = `${PB_STUB}<link rel="stylesheet" href="${prefix}/_pb/shell.css?v=${VERSION}">`;
+      const tail = `<script>window.__PB_ID__=${JSON.stringify(id)};</script><script src="${prefix}/_pb/shell.js?v=${VERSION}"></script>`;
       return send(res, 200, injectInto(html, head, tail), 'text/html; charset=utf-8');
     }
     if (p.startsWith('/_pb/')) {
