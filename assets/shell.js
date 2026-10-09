@@ -278,7 +278,7 @@ var PB_PARSE = (() => {
     isReady = true;
     for (const fn of readyQ.splice(0)) safe(fn, api);
     window.dispatchEvent(new CustomEvent('planboard:ready', { detail: api }));
-    if (!STANDALONE) connect();
+    if (!STANDALONE) { hello(); connect(); }
   }
 
   function captureOriginals() {
@@ -1770,11 +1770,21 @@ var PB_PARSE = (() => {
   }
   // After a lost connection, make sure the server now answering at this address is this plan's planboard
   // (the plan may have moved to another port and something else taken this one). Returns its state or null.
+  // This tab's secret, registered with the server that served the page. Only that server can later prove it.
+  const tab = { id: rid() + rid(), secret: rid() + rid() + rid() + rid(), registered: false };
+  async function hello() {
+    try { const r = await fetch(API('hello'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tab: tab.id, secret: tab.secret }) }); tab.registered = r.ok; } catch { }
+  }
+  async function sha256hex(text) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
   async function verifyServer() {
-    let st;
-    try { const r = await fetch(API('state'), { cache: 'no-store' }); st = await r.json().catch(() => null); }
+    let st; const nonce = rid() + rid();
+    try { const r = await fetch(API(`state?tab=${tab.id}&nonce=${nonce}`), { cache: 'no-store' }); st = await r.json().catch(() => null); }
     catch { return null; } // nothing answers: the server is just down, keep retrying
-    if (st && st.app === 'planboard' && st.id === ID) { trusted = true; return st; }
+    const ok = st && st.app === 'planboard' && st.id === ID && (!tab.registered || (st.tabProof && st.tabProof === (await sha256hex(`${tab.secret}:${nonce}`).catch(() => ''))));
+    if (ok) { trusted = true; if (!tab.registered) hello(); return st; }
     if (es) es.close();
     moved = true; connected = false; updateTop();
     if (!$('#pb-moved')) $('#pb-doc').prepend(h('div', { class: 'pb-banner pb-banner--error', id: 'pb-moved', text: "This page lost its planboard server, and something else now answers at this address. The plan probably moved to a new address: ask the agent to run planboard open and use the link it prints. Your unsent feedback is saved and will be there." }));

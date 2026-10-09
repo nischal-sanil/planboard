@@ -47,10 +47,11 @@ function print(s) { process.stdout.write(String(s).replace(/\s+$/, '') + '\n'); 
 process.stdout.on('error', (e) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
 function fail(msg, code = 1) { process.stderr.write(`planboard: ${msg}\n`); process.exit(code); }
 function readJSON(p, fallback) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return fallback; } }
-function writeJSON(p, v) {
-  fs.mkdirSync(path.dirname(p), { recursive: true });
+// State files (review conversation, sessions, ports, secrets) are private to this user: 0600 files in 0700 folders.
+function writeJSON(p, v, mode = 0o600) {
+  fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
   const t = `${p}.${process.pid}.${rid()}.tmp`;
-  fs.writeFileSync(t, JSON.stringify(v, null, 2));
+  fs.writeFileSync(t, JSON.stringify(v, null, 2), { mode });
   fs.renameSync(t, p);
 }
 function escHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -639,7 +640,7 @@ const TOKEN_FILE = path.join(HOME, 'token');
 let TOKEN = null;
 function authToken() {
   if (TOKEN && fs.existsSync(TOKEN_FILE)) return TOKEN;
-  fs.mkdirSync(HOME, { recursive: true });
+  fs.mkdirSync(HOME, { recursive: true, mode: 0o700 });
   try { fs.writeFileSync(TOKEN_FILE, crypto.randomBytes(24).toString('hex'), { flag: 'wx', mode: 0o600 }); } catch (e) { if (e.code !== 'EEXIST') throw e; }
   TOKEN = fs.readFileSync(TOKEN_FILE, 'utf8').trim();
   return TOKEN;
@@ -713,7 +714,7 @@ async function stopLegacy(port, h) {
 }
 // One server per PLANBOARD_HOME: commands started in parallel take a lock so only one of them starts it.
 async function withStartLock(fn) {
-  fs.mkdirSync(HOME, { recursive: true });
+  fs.mkdirSync(HOME, { recursive: true, mode: 0o700 });
   const lock = path.join(HOME, 'start.lock');
   const alive = (pid) => { try { process.kill(pid, 0); } catch (e) { if (e.code !== 'EPERM') return false; } return isPlanboardCommand(pid); };
   const isPlanboardCommand = (pid) => { try { return /planboard\.mjs/.test(execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); } catch { return false; } };
@@ -751,9 +752,9 @@ async function startServer() {
     if (await portFree(p)) { port = p; break; }
   }
   if (!port) fail(`No free port between ${BASE_PORT} and ${BASE_PORT + 39}. Set PLANBOARD_PORT.`);
-  fs.mkdirSync(HOME, { recursive: true });
+  fs.mkdirSync(HOME, { recursive: true, mode: 0o700 });
   authToken();
-  const log = fs.openSync(path.join(HOME, 'server.log'), 'a');
+  const log = fs.openSync(path.join(HOME, 'server.log'), 'a', 0o600);
   const child = spawn(process.execPath, [SELF, 'serve', '--port', String(port)], { detached: true, stdio: ['ignore', log, log], env: process.env });
   child.unref();
   for (let i = 0; i < 60; i++) {
@@ -913,7 +914,7 @@ function cmdNew(a) {
   fs.mkdirSync(dir, { recursive: true });
   const plan = JSON.parse(fs.readFileSync(path.join(ASSETS, 'plan.template.json'), 'utf8'));
   plan.title = title; plan.lens = lens;
-  writeJSON(path.join(dir, 'plan.json'), plan);
+  writeJSON(path.join(dir, 'plan.json'), plan, 0o644);
   const html = fs.readFileSync(path.join(ASSETS, 'plan.template.html'), 'utf8')
     .replaceAll('{{TITLE}}', escHtml(title)).replaceAll('{{LENS_HINT}}', LENS_HINTS[lens]);
   fs.writeFileSync(path.join(dir, 'plan.html'), html);
@@ -1236,12 +1237,19 @@ function defaultPage(title) {
 // origin: a plan page can't read or post to another plan, or to the agent routes.
 function cmdServe(a) {
   const port = Number(a.port) || BASE_PORT;
-  fs.mkdirSync(HOME, { recursive: true });
+  fs.mkdirSync(HOME, { recursive: true, mode: 0o700 });
   const SESS_FILE = path.join(HOME, 'sessions.json');
   const PORTS_FILE = path.join(HOME, 'plan-ports.json');
   const sessions = readJSON(SESS_FILE, {});
   for (const [id, dir] of Object.entries(sessions)) if (typeof dir !== 'string' || !fs.existsSync(path.join(dir, 'plan.json'))) delete sessions[id];
   const planPorts = readJSON(PORTS_FILE, {});
+  // Each open tab registers a random secret (POST /_api/hello). Later, after a lost connection, the tab asks the
+  // server at its address to prove it knows that secret, so a program that took over the port can't pass as us.
+  const TABS_FILE = path.join(HOME, 'tab-secrets.json');
+  // tighten files written by older versions
+  try { fs.chmodSync(HOME, 0o700); } catch { }
+  for (const f of ['sessions.json', 'plan-ports.json', 'server.json', 'server.log', 'token', 'tab-secrets.json']) { try { fs.chmodSync(path.join(HOME, f), 0o600); } catch { } }
+  const tabSecrets = readJSON(TABS_FILE, {});
   const live = new Map();
   let lastActivity = Date.now();
   const L = (id) => {
@@ -1488,7 +1496,21 @@ function cmdServe(a) {
       if (!['shell.js', 'shell.css'].includes(name)) return send(res, 404, 'Not found');
       return send(res, 200, fs.readFileSync(path.join(ASSETS, name)), name.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8');
     }
-    if (p === '/_api/state') return json(res, 200, { ...stateFor(id, dir), dir, status: statusOf(id), draft: readJSON(stPath(dir, 'draft.json'), null) });
+    if (p === '/_api/state') {
+      const tab = String(url.searchParams.get('tab') || ''), nonce = String(url.searchParams.get('nonce') || '').slice(0, 64);
+      const sec = tab && tabSecrets[id] && tabSecrets[id][tab];
+      return json(res, 200, { ...stateFor(id, dir), dir, status: statusOf(id), draft: readJSON(stPath(dir, 'draft.json'), null), tabProof: sec && nonce ? tokenProof(sec.secret, nonce) : null });
+    }
+    if (p === '/_api/hello' && req.method === 'POST') {
+      const b = await readBody(req, 4000);
+      const tab = String(b.tab || ''), secret = String(b.secret || '');
+      if (!/^[\w-]{6,64}$/.test(tab) || !/^[\w-]{16,128}$/.test(secret)) return json(res, 400, { error: 'bad hello' });
+      const mine = tabSecrets[id] = tabSecrets[id] || {};
+      mine[tab] = { secret, at: Date.now() };
+      for (const k of Object.keys(mine).sort((x, y) => mine[y].at - mine[x].at).slice(30)) delete mine[k]; // keep the 30 newest tabs
+      writeJSON(TABS_FILE, tabSecrets);
+      return json(res, 200, { ok: true });
+    }
     // The page's unsent feedback, kept on the server too, so it survives a new browser, a cleared cache,
     // or the plan moving to another port.
     if (p === '/_api/draft' && req.method === 'POST') {
