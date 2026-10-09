@@ -1364,6 +1364,8 @@ function cmdServe(a) {
       for (const k of ['kind', 'id', 'section', 'label', 'quote']) if (i.target[k] != null) o.target[k] = String(i.target[k]).slice(0, 2000);
     }
     if (typeof o.text === 'string') o.text = o.text.slice(0, 20000);
+    if (o.data !== undefined) { let n = 0; try { n = JSON.stringify(o.data).length; } catch { n = Infinity; } if (n > 20000) o.data = { dropped: `control data too large (${n} characters; limit 20000)` }; }
+    for (const k of ['key', 'mode', 'verdict', 'choiceLabel', 'output']) if (o[k] !== undefined) o[k] = String(o[k]).slice(0, 2000);
     return o;
   };
 
@@ -1515,7 +1517,7 @@ function cmdServe(a) {
     // or the plan moving to another port.
     if (p === '/_api/draft' && req.method === 'POST') {
       const b = await readBody(req, 500_000);
-      const queue = Array.isArray(b.queue) ? b.queue.filter((i) => i && ITEM_KINDS.has(i.kind)).slice(0, 200) : [];
+      const queue = Array.isArray(b.queue) ? b.queue.filter((i) => i && typeof i === 'object' && ITEM_KINDS.has(i.kind)).slice(0, 200).map(clean) : [];
       writeJSON(stPath(dir, 'draft.json'), { queue, text: String(b.text || '').slice(0, 20000), at: Date.now() });
       return json(res, 200, { ok: true });
     }
