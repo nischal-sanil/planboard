@@ -95,7 +95,7 @@ In these commands `planboard` means `node ~/.claude/skills/planboard/scripts/pla
 
 ## Privacy and security
 
-The server listens on `127.0.0.1` only and rejects requests addressed to other host names or sent from other websites. Each plan page gets its own local port, so it is its own browser origin: one plan's page can't read another plan or post feedback into it. The routes Claude uses (receiving feedback, replying, ending, stopping) also need a secret token from `~/.planboard/token`, readable only by you. It serves only files inside registered plan folders: never dotfiles, and never symlinks that point outside the folder. Plan pages run under a Content Security Policy, so they can't load anything from the internet or send data anywhere, even if a plan came from a repo you cloned.
+The server listens on `127.0.0.1` only and rejects requests addressed to other host names or sent from other websites. Each plan page gets its own local port, so it is its own browser origin: one plan's page can't read another plan or post feedback into it. The routes Claude uses (receiving feedback, replying, ending, stopping) also need a secret token from `~/.planboard/token`, readable only by you. It serves only files inside registered plan folders: never dotfiles, and never symlinks that point outside the folder. Plan pages run under a Content Security Policy, so they can't load scripts, styles or images from the internet, or make network requests to other sites. A page can still navigate its own tab to another website (browsers allow that), so only open plans whose plan.html you trust, the same as any web page.
 
 ## Uninstall
 

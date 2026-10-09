@@ -162,7 +162,7 @@ For `feature`, `refactor`, and `new-project` lenses, `check` warns about a step 
 
 `id` and `title` are required. `body` is markdown, `items` is a string array (inline markdown). Use these for text-shaped extras that should also appear in `plan.md`. Anything visual (diagrams, mocks, tables) goes in plan.html instead; plan.html sections are not exported to markdown.
 
-Section ids from `sections` and from `data-pb-section` attributes in plan.html share one id space: the same id in both is a duplicate error. Each place one id. They also count for the lens checks: a `sections` entry with id `rollback` satisfies the refactor rollback check just like a `data-pb-section="rollback"` would. Put anything that must reach plan.md in `sections`.
+Section ids from `sections` and from `data-pb-section` attributes in plan.html share one id space: the same id in both is a duplicate error, so give each id one place. They also count for the lens checks: a `sections` entry with id `rollback` satisfies the refactor rollback check just like a `data-pb-section="rollback"` would. Put anything that must reach plan.md in `sections`.
 
 ## Markdown subset
 
