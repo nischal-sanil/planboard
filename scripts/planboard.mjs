@@ -674,10 +674,11 @@ async function health(port) {
   try {
     const h = await request(port, 'GET', `/_api/health?nonce=${nonce}`, null, 1200, false);
     if (!h || h.app !== 'planboard') return null;
-    // 1.2.0 servers prove the token without the port; accept that only if the server itself says it listens on
-    // the port we contacted (a relay passes the real server's port through, so it fails this).
-    const proved = !!h.proof && (h.proof === tokenProof(token, `${nonce}:${port}`) || (h.port === port && h.proof === tokenProof(token, nonce)));
-    return { ...h, legacy: !('proof' in h), ours: h.home === HOME && proved };
+    // Only a proof bound to this port makes a server ours. A 1.2.0 server's port-less proof shows it knows the
+    // token too, but a relay could pass it along, so such a server is treated as legacy: stopped without the token.
+    const proved = !!h.proof && h.proof === tokenProof(token, `${nonce}:${port}`);
+    const oldProof = !proved && !!h.proof && h.proof === tokenProof(token, nonce);
+    return { ...h, legacy: !('proof' in h) || oldProof, ours: h.home === HOME && proved };
   } catch { return null; }
 }
 // Is this pid the planboard server for this port? Its command line is `planboard.mjs serve --port <port>`,
@@ -702,8 +703,8 @@ async function waitUntilDown(port, ms = 4000) {
   for (let t = 0; t < ms; t += 100) { if (!(await health(port))) return true; await sleep(100); }
   return false;
 }
-// Stop an older planboard for this HOME without giving it the token: ask it, and if it refuses (1.1.0 wanted
-// the token), signal its process, but only after checking that the pid really is a planboard server.
+// Stop an older planboard for this HOME without giving it the token: ask it, and if it refuses (1.1.0 and
+// 1.2.0 want the token), signal its process, but only after checking that the pid serves this port.
 async function stopLegacy(port, h) {
   try { await request(port, 'POST', '/_api/shutdown', {}, 2000, false); } catch { }
   if (await waitUntilDown(port, 1500)) return true;
