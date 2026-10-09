@@ -10,7 +10,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import vm from 'node:vm';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const VERSION = '1.2.0';
@@ -648,13 +648,22 @@ function request(port, method, p, body, timeoutMs = 5000, auth = true) {
   });
 }
 // Health check without the token. `ours` is true only if the server proved it knows this HOME's token.
+// The proof covers the port the server itself listens on, so a program that relays to the real server
+// from another port fails it. A server too old to send a proof at all is `legacy`.
 async function health(port) {
-  const nonce = rid() + rid();
+  const nonce = rid() + rid(); const token = authToken();
   try {
     const h = await request(port, 'GET', `/_api/health?nonce=${nonce}`, null, 1200, false);
     if (!h || h.app !== 'planboard') return null;
-    return { ...h, ours: h.home === HOME && !!h.proof && h.proof === tokenProof(authToken(), nonce) };
+    // 1.2.0 servers prove the token without the port; accept that only if the server itself says it listens on
+    // the port we contacted (a relay passes the real server's port through, so it fails this).
+    const proved = !!h.proof && (h.proof === tokenProof(token, `${nonce}:${port}`) || (h.port === port && h.proof === tokenProof(token, nonce)));
+    return { ...h, legacy: !('proof' in h), ours: h.home === HOME && proved };
   } catch { return null; }
+}
+// Is this pid really a planboard server (and not some other process that reused the pid)?
+function isPlanboardServer(pid) {
+  try { return /planboard\.mjs\s+serve\b/.test(execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); } catch { return false; }
 }
 function portFree(port) {
   return new Promise((resolve) => {
@@ -673,13 +682,20 @@ async function waitUntilDown(port, ms = 4000) {
   for (let t = 0; t < ms; t += 100) { if (!(await health(port))) return true; await sleep(100); }
   return false;
 }
-// Ask an older planboard (one that predates the token) to stop. It never gets the token.
-async function stopLegacy(port) { try { await request(port, 'POST', '/_api/shutdown', {}, 2000, false); return await waitUntilDown(port); } catch { return false; } }
+// Stop an older planboard for this HOME without giving it the token: ask it, and if it refuses (1.1.0 wanted
+// the token), signal its process, but only after checking that the pid really is a planboard server.
+async function stopLegacy(port, h) {
+  try { await request(port, 'POST', '/_api/shutdown', {}, 2000, false); } catch { }
+  if (await waitUntilDown(port, 1500)) return true;
+  if (h && h.pid && isPlanboardServer(h.pid)) { try { process.kill(h.pid, 'SIGTERM'); } catch { } return waitUntilDown(port); }
+  return false;
+}
 // One server per PLANBOARD_HOME: commands started in parallel take a lock so only one of them starts it.
 async function withStartLock(fn) {
   fs.mkdirSync(HOME, { recursive: true });
   const lock = path.join(HOME, 'start.lock');
-  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+  const alive = (pid) => { try { process.kill(pid, 0); } catch (e) { if (e.code !== 'EPERM') return false; } return isPlanboardCommand(pid); };
+  const isPlanboardCommand = (pid) => { try { return /planboard\.mjs/.test(execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); } catch { return false; } };
   for (let i = 0; ; i++) {
     try { fs.writeFileSync(lock, String(process.pid), { flag: 'wx' }); break; } catch (e) {
       if (e.code !== 'EEXIST') throw e;
@@ -710,7 +726,7 @@ async function startServer() {
   for (let p = BASE_PORT; p < BASE_PORT + 40; p++) {
     const h = await health(p);
     if (h && h.ours && h.version === VERSION) return p;
-    if (h && h.home === HOME && !h.proof && (await stopLegacy(p))) { port = p; break; }
+    if (h && h.home === HOME && h.legacy && (await stopLegacy(p, h))) { port = p; break; }
     if (await portFree(p)) { port = p; break; }
   }
   if (!port) fail(`No free port between ${BASE_PORT} and ${BASE_PORT + 39}. Set PLANBOARD_PORT.`);
@@ -1012,7 +1028,10 @@ async function cmdStop() {
   for (let p = BASE_PORT; p < BASE_PORT + 40; p++) {
     const h = await health(p); if (!h) continue;
     if (h.ours) ports.add(p);
-    else if (h.home === HOME && !h.proof && (await stopLegacy(p))) legacy++;
+    else if (h.home === HOME && h.legacy) {
+      if (await stopLegacy(p, h)) legacy++;
+      else fail(`An older planboard server on port ${p} did not stop. Stop it with: kill ${h.pid}`);
+    }
   }
   if (!ports.size) return print(legacy ? 'Server stopped.' : 'Server is not running.');
   for (const p of ports) { try { await request(p, 'POST', '/_api/shutdown', {}); } catch { } }
@@ -1312,7 +1331,7 @@ function cmdServe(a) {
     }
     if (p === '/_api/health') {
       const nonce = String(url.searchParams.get('nonce') || '').slice(0, 64); const tok = currentToken();
-      return json(res, 200, { app: 'planboard', version: VERSION, pid: process.pid, home: HOME, port, proof: nonce && tok ? tokenProof(tok, nonce) : null });
+      return json(res, 200, { app: 'planboard', version: VERSION, pid: process.pid, home: HOME, port, proof: nonce && tok ? tokenProof(tok, `${nonce}:${req.socket.localPort}`) : null });
     }
     if (p === '/' || p === '') return send(res, 200, 'planboard is running. Open a plan from the terminal: planboard open <plan folder>');
     const agent = /^\/p\/([0-9a-f]{10})\/_api\/(wait|reply|end|ack)$/.exec(p);
