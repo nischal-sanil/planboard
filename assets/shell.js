@@ -1353,7 +1353,11 @@ var PB_PARSE = (() => {
   function expandDiagram(fig) {
     if ($('#pb-zoom')) return;
     const svg = $(':scope > svg', fig); if (!svg) return;
-    const opener = document.activeElement;
+    const opener = document.activeElement; const sx = scrollX, sy = scrollY;
+    // other diagrams in the same section, so before/after pairs can be flipped through without closing
+    const sec = topSections().find((x) => x.contains(fig));
+    const siblings = sec ? $$('figure.pb-diagram.is-rendered', sec) : [fig];
+    const at = siblings.indexOf(fig);
     const holder = h('div', { class: 'pb-diagram-holder', style: `height:${fig.offsetHeight}px` });
     fig.replaceWith(holder);
     const nat = Number(svg.getAttribute('width')) || 600;
@@ -1361,25 +1365,38 @@ var PB_PARSE = (() => {
     const body = h('div', { class: 'pb-zoom__body' });
     const pct = h('span', { class: 'pb-zoom__pct', 'aria-live': 'polite' });
     let z = 1;
-    const apply = (nz) => { z = Math.max(0.25, Math.min(3, nz)); svg.style.width = Math.round(nat * z) + 'px'; svg.style.maxWidth = 'none'; pct.textContent = `${Math.round(z * 100)}%`; if (hoverEl) hideHoverBar(); };
-    const fitZ = () => { const r = body.getBoundingClientRect(); return Math.min((r.width - 48) / nat, (r.height - 48) / natH); };
+    const apply = (nz) => { z = Math.max(0.2, Math.min(3, nz)); svg.style.width = Math.round(nat * z) + 'px'; svg.style.maxWidth = 'none'; pct.textContent = `${Math.round(z * 100)}%`; if (hoverEl) hideHoverBar(); };
+    // fit the whole figure, including its padding, border, note and caption
+    const fitZ = () => {
+      const r = body.getBoundingClientRect(); const s = svg.getBoundingClientRect();
+      const chromeW = fig.offsetWidth - s.width, chromeH = fig.offsetHeight - s.height;
+      return Math.min((r.width - 48 - chromeW) / nat, (r.height - 48 - chromeH) / natH);
+    };
     const btn = (label, title, fn, cls = '') => h('button', { class: `pb-btn pb-btn--sm ${cls}`, type: 'button', title, html: label, onclick: fn });
-    const title = fig.getAttribute('data-caption') || fig.getAttribute('data-pb-label') || 'Diagram';
+    const name = (f) => f.getAttribute('data-caption') || f.getAttribute('data-pb-label') || 'Diagram';
+    const title = name(fig);
     let close;
     const closeBtn = btn('Close', 'Close (Esc)', () => close(), 'pb-btn--primary');
+    const go = (k) => { const other = siblings[k]; close(false); expandDiagram(other); };
+    const nav = siblings.length > 1 ? h('span', { class: 'pb-zoom__nav' },
+      at > 0 ? btn(`‹ ${esc(short(name(siblings[at - 1]), 24))}`, 'Previous diagram in this section', () => go(at - 1)) : null,
+      at < siblings.length - 1 ? btn(`${esc(short(name(siblings[at + 1]), 24))} ›`, 'Next diagram in this section', () => go(at + 1)) : null) : null;
     const box = h('div', { class: 'pb-zoom', id: 'pb-zoom', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Diagram: ${title}` },
       h('div', { class: 'pb-zoom__head' },
-        h('b', { class: 'pb-zoom__title', text: title }),
-        h('span', { class: 'pb-zoom__help', text: isEnded() ? 'Drag or scroll to move around.' : 'Drag or scroll to move around. Hover or Tab to a part to comment on it.' }),
-        h('span', { class: 'pb-zoom__tools' },
+        h('b', { class: 'pb-zoom__title', text: siblings.length > 1 ? `${title} (${at + 1} of ${siblings.length})` : title }),
+        h('span', { class: 'pb-zoom__help', text: isEnded() ? 'Drag or scroll to move around.' : 'Drag or scroll to move around. Hover a part to comment on it, or Tab to the diagram and press Enter.' }),
+        h('span', { class: 'pb-zoom__tools' }, nav,
           btn('−', 'Zoom out', () => apply(z / 1.25)), pct, btn('+', 'Zoom in', () => apply(z * 1.25)),
           btn('Fit', 'Fit the whole diagram on screen', () => apply(fitZ())), btn('100%', 'Actual size', () => apply(1)), closeBtn)),
       body);
+    const hadTab = fig.getAttribute('tabindex');
     fig.classList.add('is-zoomed');
+    if (!isEnded()) fig.setAttribute('tabindex', '0');
     body.append(fig);
     $('#pb-doc').append(box);
     document.documentElement.classList.add('pb-modal-open');
-    apply(Math.min(1.5, Math.max(fitZ(), 0.75)));
+    apply(1);
+    apply(Math.min(1.5, Math.max(fitZ(), innerWidth < 700 ? 0.3 : 0.75)));
     // drag the background to pan
     let drag = null;
     body.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse' || e.button !== 0 || e.target.closest('[data-pb-id]:not(figure), button, a')) return; drag = { x: e.clientX, y: e.clientY, l: body.scrollLeft, t: body.scrollTop }; body.setPointerCapture(e.pointerId); body.classList.add('is-dragging'); });
@@ -1388,24 +1405,35 @@ var PB_PARSE = (() => {
     body.addEventListener('pointerup', endDrag); body.addEventListener('pointercancel', endDrag);
     body.addEventListener('scroll', () => { if (hoverEl) showHoverBar(hoverEl); }, { passive: true });
     body.addEventListener('wheel', (e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); apply(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1)); } }, { passive: false });
+    const tabbables = () => $$('button:not([disabled]), [tabindex="0"]', box).filter((el) => el.offsetParent !== null);
     const onKey = (e) => {
-      if (e.key === 'Escape' && !pop) { e.preventDefault(); e.stopPropagation(); close(); }
-      else if (!e.target.closest('input, textarea') && (e.key === '+' || e.key === '=')) apply(z * 1.25);
-      else if (!e.target.closest('input, textarea') && e.key === '-') apply(z / 1.25);
+      if (pop && pop.contains(e.target)) return; // the comment box handles its own keys
+      if (e.key === 'Escape' && !pop) { e.preventDefault(); e.stopPropagation(); close(); return; }
+      if (e.key === 'Tab') {
+        // keep focus in the overlay without letting the browser scroll the page behind it
+        const f = tabbables(); if (!f.length) return;
+        const i = f.indexOf(document.activeElement);
+        e.preventDefault();
+        f[e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : (i < 0 || i === f.length - 1 ? 0 : i + 1)].focus({ preventScroll: true });
+        return;
+      }
+      if (e.target.closest('input, textarea')) return;
+      if (e.key === '+' || e.key === '=') apply(z * 1.25);
+      else if (e.key === '-') apply(z / 1.25);
     };
-    // keep keyboard focus in the overlay (the comment box and its button live outside it)
-    const onFocus = (e) => { if (!box.contains(e.target) && !(pop && pop.contains(e.target)) && !hoverBar.contains(e.target)) closeBtn.focus(); };
     document.addEventListener('keydown', onKey, true);
-    document.addEventListener('focusin', onFocus);
-    close = () => {
-      document.removeEventListener('keydown', onKey, true); document.removeEventListener('focusin', onFocus);
+    close = (restoreFocus = true) => {
+      document.removeEventListener('keydown', onKey, true);
       hideHoverBar(); closePop();
-      fig.classList.remove('is-zoomed'); holder.replaceWith(fig); box.remove();
+      fig.classList.remove('is-zoomed');
+      if (hadTab == null) fig.removeAttribute('tabindex'); else fig.setAttribute('tabindex', hadTab);
+      holder.replaceWith(fig); box.remove();
       document.documentElement.classList.remove('pb-modal-open');
       fitDiagram(fig);
-      const back = opener && document.contains(opener) ? opener : $('.pb-diagram__expand', fig); back?.focus();
+      scrollTo(sx, sy);
+      if (restoreFocus) { const back = opener && document.contains(opener) ? opener : $('.pb-diagram__expand', fig); back?.focus({ preventScroll: true }); }
     };
-    closeBtn.focus();
+    closeBtn.focus({ preventScroll: true });
   }
 
   function flowSvg(G, dg) {
@@ -1750,7 +1778,8 @@ var PB_PARSE = (() => {
       }
       if (d.delivered) for (const x of S.transcript) if (d.delivered.includes(x.id)) x.delivered = d.at;
       renderConvo(); refreshStates(); updateNavBadges();
-      if (d.entry && d.entry.from === 'agent') { if (innerWidth <= 980) { elSide.classList.add('is-open'); convoToEnd(); } else if (elApp.classList.contains('pb-side-closed')) toast('The agent replied. Open the conversation to read it.'); }
+      if (d.entry && d.entry.from === 'agent' && $('#pb-zoom')) toast('The agent replied. Close the diagram to read it.');
+      else if (d.entry && d.entry.from === 'agent') { if (innerWidth <= 980) { elSide.classList.add('is-open'); convoToEnd(); } else if (elApp.classList.contains('pb-side-closed')) toast('The agent replied. Open the conversation to read it.'); }
     });
     es.addEventListener('ended', (e) => { const d = JSON.parse(e.data); S.ended = true; S.endedBy = d.by; if (!$('#pb-ended')) $('#pb-doc').prepend(endedBanner()); hideHoverBar(); blockFocus(false); refreshStates(); updateTop(); updateNavBadges(); });
     es.onerror = () => { if (connected || !downSince) downSince = Date.now(); connected = false; wasDown = true; trusted = false; updateTop(); scheduleCheck(); };

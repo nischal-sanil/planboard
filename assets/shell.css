@@ -619,7 +619,9 @@ details.pb-more > :not(summary) { margin: 0 14px 12px; }
 .pb-zoom__body { flex: 1; min-height: 0; overflow: auto; padding: 24px; display: grid; cursor: grab; overscroll-behavior: contain; }
 .pb-zoom__body.is-dragging { cursor: grabbing; user-select: none; }
 .pb-zoom .pb-diagram.is-zoomed { margin: auto; padding: 16px; overflow: visible; background: var(--pb-paper); border: 1px solid var(--pb-rule); }
-.pb-zoom .pb-diagram__bar { display: none; }
+.pb-zoom .pb-diagram__expand { display: none; }
+.pb-zoom .pb-diagram:not(.pb-changed) .pb-diagram__bar { display: none; }
+.pb-zoom__nav { display: inline-flex; gap: 6px; margin-right: 8px; }
 .pb-zoom .pb-diagram > svg { margin: 0; }
 .pb-diagram.is-scroll { scrollbar-color: var(--pb-rule-2) transparent; }
 .pb-diagram.is-scroll::-webkit-scrollbar { height: 10px; }
