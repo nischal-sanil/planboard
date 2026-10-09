@@ -680,9 +680,10 @@ async function health(port) {
     return { ...h, legacy: !('proof' in h), ours: h.home === HOME && proved };
   } catch { return null; }
 }
-// Is this pid really a planboard server (and not some other process that reused the pid)?
-function isPlanboardServer(pid) {
-  try { return /planboard\.mjs\s+serve\b/.test(execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); } catch { return false; }
+// Is this pid the planboard server for this port? Its command line is `planboard.mjs serve --port <port>`,
+// and no other process can hold that port, so a matching pid can't be some other planboard server.
+function isPlanboardServer(pid, port) {
+  try { return new RegExp(`planboard\\.mjs\\s+serve\\s+--port\\s+${Number(port)}(?!\\d)`).test(execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); } catch { return false; }
 }
 function portFree(port) {
   return new Promise((resolve) => {
@@ -706,7 +707,7 @@ async function waitUntilDown(port, ms = 4000) {
 async function stopLegacy(port, h) {
   try { await request(port, 'POST', '/_api/shutdown', {}, 2000, false); } catch { }
   if (await waitUntilDown(port, 1500)) return true;
-  if (h && h.pid && isPlanboardServer(h.pid)) { try { process.kill(h.pid, 'SIGTERM'); } catch { } return waitUntilDown(port); }
+  if (h && h.pid && isPlanboardServer(h.pid, port)) { try { process.kill(h.pid, 'SIGTERM'); } catch { } return waitUntilDown(port); }
   return false;
 }
 // One server per PLANBOARD_HOME: commands started in parallel take a lock so only one of them starts it.
@@ -1067,7 +1068,7 @@ async function cmdStop() {
     if (h.ours) ports.add(p);
     else if (h.home === HOME && h.legacy) {
       if (await stopLegacy(p, h)) legacy++;
-      else fail(`An older planboard server on port ${p} did not stop. Stop it with: kill ${h.pid}`);
+      else fail(`An older planboard server on port ${p} did not stop.${h.pid && isPlanboardServer(h.pid, p) ? ` Stop it with: kill ${h.pid}` : ' Find what is listening there with: lsof -nP -iTCP:' + p + ' -sTCP:LISTEN'}`);
     }
   }
   if (!ports.size) return print(legacy ? 'Server stopped.' : 'Server is not running.');
