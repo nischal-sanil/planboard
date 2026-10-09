@@ -1585,7 +1585,7 @@ var PB_PARSE = (() => {
     const labOut = new Map(), labIn = new Map();
     for (const e of E) if (e.label && !e.self) { labOut.set(e.from, (labOut.get(e.from) || 0) + 1); labIn.set(e.to, (labIn.get(e.to) || 0) + 1); }
     for (const e of E) {
-      const a = byId(e.from), b = byId(e.to); let d, mid;
+      const a = byId(e.from), b = byId(e.to); let d, mid, seg = null;
       if (e.self) {
         const x = a.x, y = horiz ? a.y - a.h / 2 : a.y; const xr = a.x + a.w / 2;
         d = horiz ? `M${x - 10},${y} C${x - 22},${y - 34} ${x + 22},${y - 34} ${x + 10},${y}` : `M${xr},${y - 8} C${xr + 34},${y - 22} ${xr + 34},${y + 22} ${xr},${y + 8}`;
@@ -1605,7 +1605,7 @@ var PB_PARSE = (() => {
         const two = pts.length === 2;
         const k = two ? 0 : Math.floor((pts.length - 1) / 2);
         const t = !two ? 0.5 : (labOut.get(e.from) || 0) >= 3 ? 0.78 : (labIn.get(e.to) || 0) >= 3 ? 0.22 : 0.55;
-        const [p0, p1] = [pts[k], pts[k + 1]];
+        const [p0, p1] = [pts[k], pts[k + 1]]; seg = [p0, p1];
         mid = [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t];
         // keep the label inside the gap between the two layers, clear of both nodes, and on its own edge
         if (e.label) {
@@ -1617,10 +1617,27 @@ var PB_PARSE = (() => {
           mid[1 - ax] = p0[1 - ax] + (p1[1 - ax] - p0[1 - ax]) * f;
         }
       }
-      paths.push({ e, d, mid });
+      paths.push({ e, d, mid, seg });
     }
     // nudge edge labels apart so they don't sit on top of each other
     const lab = paths.filter((p) => p.e.label).map((p) => { const lines = wrapLines(p.e.label, 160, 12); return { p, w: Math.max(...lines.map((l) => tw(l, 12))) + 10, h: lines.length * 15 + 4 }; });
+    // a label that would cover a node (or an earlier label) slides along its own edge to the first clear spot
+    {
+      const boxes = N.map((n) => [n.x - n.w / 2 - 3, n.y - n.h / 2 - 3, n.x + n.w / 2 + 3, n.y + n.h / 2 + 3]);
+      const hit = (L, mx, my) => boxes.some(([x1, y1, x2, y2]) => mx - L.w / 2 < x2 && mx + L.w / 2 > x1 && my - L.h / 2 < y2 && my + L.h / 2 > y1);
+      const placed = [];
+      const clash = (L, mx, my) => placed.some((P) => Math.abs(P.p.mid[0] - mx) < (P.w + L.w) / 2 + 2 && Math.abs(P.p.mid[1] - my) < (P.h + L.h) / 2 + 1);
+      for (const L of lab) {
+        const sg = L.p.seg;
+        if (sg && (hit(L, ...L.p.mid) || clash(L, ...L.p.mid))) {
+          for (const t of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8]) {
+            const m = [sg[0][0] + (sg[1][0] - sg[0][0]) * t, sg[0][1] + (sg[1][1] - sg[0][1]) * t];
+            if (!hit(L, ...m) && !clash(L, ...m)) { L.p.mid = m; break; }
+          }
+        }
+        placed.push(L);
+      }
+    }
     {
       const k = horiz ? 1 : 0, size = (L) => (k ? L.h : L.w), other = (L) => (k ? L.w : L.h);
       lab.sort((A, B) => A.p.mid[k] - B.p.mid[k]);
