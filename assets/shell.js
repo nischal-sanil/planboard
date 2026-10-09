@@ -210,7 +210,20 @@ var PB_PARSE = (() => {
   }
 
   // ---------- queue ----------
-  const saveQueue = () => store.set(K.queue, queue);
+  // Unsent feedback lives in this browser (localStorage) and on the server (draft.json), so it survives a
+  // cleared cache, another browser, or the plan moving to a new address. The server copy is only written
+  // while this page is sure it's talking to its own planboard server (see verifyServer).
+  let trusted = true, downSince = 0, moved = false, draftT = 0;
+  const syncDraft = () => {
+    if (STANDALONE || isEnded()) return;
+    clearTimeout(draftT);
+    draftT = setTimeout(() => {
+      if (!trusted) return;
+      const text = $('#pb-input') ? $('#pb-input').value : '';
+      fetch(API('draft'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ queue: queue.map(({ at, ...x }) => x), text }) }).catch(() => { });
+    }, 600);
+  };
+  const saveQueue = () => { store.set(K.queue, queue); syncDraft(); };
   function enqueue(item) {
     if (isEnded()) { toast('This review has ended.', true); return; }
     queue = queue.filter((i) => i.key !== item.key);
@@ -242,6 +255,7 @@ var PB_PARSE = (() => {
     PLAN = (S.plan && typeof S.plan === 'object') ? S.plan : {};
     status = S.status || null;
     queue = store.get(K.queue, []);
+    if (!queue.length && S.draft && Array.isArray(S.draft.queue) && S.draft.queue.length) { queue = S.draft.queue; store.set(K.queue, queue); }
     document.body.classList.add('pb-on');
     if (PLAN.title && (!document.title || /^\s*$/.test(document.title))) document.title = PLAN.title;
     captureOriginals();
@@ -782,7 +796,8 @@ var PB_PARSE = (() => {
   function statusInfo() {
     if (isEnded()) return { cls: '', text: 'Review ended', line: 'This review has ended.' };
     if (STANDALONE) return { cls: '', text: 'Offline copy', line: 'This is a saved copy. Sending copies your feedback so you can paste it to the agent.' };
-    if (!connected) return { cls: '', text: 'Reconnecting…', line: 'Lost the local server. Retrying…' };
+    if (moved) return { cls: '', text: 'Plan moved', line: 'This address no longer belongs to the plan. Ask the agent to run planboard open and use the new link; your unsent feedback goes with it.' };
+    if (!connected) return { cls: '', text: 'Reconnecting…', line: Date.now() - downSince > 20000 ? 'Still no planboard server. If the agent restarted it, the plan may have a new address: ask it to run planboard open. Your unsent feedback is saved.' : 'Lost the local server. Retrying…' };
     if (!status) return { cls: '', text: '…', line: '' };
     const now = Date.now() + skew;
     if (status.listening) return { cls: 'waiting', text: 'Agent is waiting for you', line: 'The agent is listening. It gets your feedback the moment you send it.' };
@@ -887,7 +902,7 @@ var PB_PARSE = (() => {
       h('button', { class: 'pb-btn pb-btn--ghost pb-btn--sm pb-top__hide-narrow', type: 'button', text: 'Hide', onclick: toggleSide }));
     const list = h('div', { class: 'pb-convo', id: 'pb-convo', 'aria-live': 'polite' });
     const ta = h('textarea', { class: 'pb-textarea', id: 'pb-input', rows: 3, placeholder: 'Ask a question or describe a change', 'aria-label': 'Message to the agent' });
-    ta.addEventListener('input', () => { store.set(K.draft, ta.value, true); autoGrow(ta); updateTop(); });
+    ta.addEventListener('input', () => { store.set(K.draft, ta.value, true); autoGrow(ta); updateTop(); syncDraft(); });
     ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendAll(); } });
     const seg = h('div', { class: 'pb-seg', role: 'group', 'aria-label': 'Message type' },
       h('button', { type: 'button', 'data-mode': 'ask', 'aria-pressed': String(mode === 'ask'), title: 'Just answer me — no plan change needed', text: 'Ask' }),
@@ -968,6 +983,7 @@ var PB_PARSE = (() => {
     const items = currentItems(); if (extra) items.push(...extra);
     if (!items.length) { toast('Nothing to send yet. Type a message or interact with the plan first.'); $('#pb-input')?.focus(); return; }
     if (STANDALONE) { await copyText(formatText(items)); toast('Copied. Paste it into your chat with the agent.'); return; }
+    if (moved || (!trusted && !(await verifyServer()))) { toast("Not sent: this page can't reach its planboard server. Your feedback is still queued.", true); return; }
     sending = true; renderAgentLine();
     const wasListening = !!(status && status.listening);
     try {
@@ -1705,15 +1721,40 @@ var PB_PARSE = (() => {
       if (d.entry && d.entry.from === 'agent') { if (innerWidth <= 980) { elSide.classList.add('is-open'); convoToEnd(); } else if (elApp.classList.contains('pb-side-closed')) toast('The agent replied. Open the conversation to read it.'); }
     });
     es.addEventListener('ended', (e) => { const d = JSON.parse(e.data); S.ended = true; S.endedBy = d.by; if (!$('#pb-ended')) $('#pb-doc').prepend(endedBanner()); hideHoverBar(); blockFocus(false); refreshStates(); updateTop(); updateNavBadges(); });
-    es.onerror = () => { connected = false; wasDown = true; updateTop(); };
+    es.onerror = () => { if (connected || !downSince) downSince = Date.now(); connected = false; wasDown = true; trusted = false; updateTop(); scheduleCheck(); };
     es.onopen = async () => {
-      connected = true;
       if (wasDown) {
         wasDown = false;
-        try { const st = await (await fetch(API('state'), { cache: 'no-store' })).json(); if (st.version !== S.version) return softReload(); } catch { }
+        const st = await verifyServer();
+        if (!st) return;
+        if (st.version !== S.version) return softReload();
       }
-      updateTop();
+      connected = true; downSince = 0; updateTop();
     };
+  }
+  // While disconnected, check every few seconds who answers at this address. The browser stops retrying the
+  // event stream for good if a non-planboard server answers, so reconnect it ourselves once ours is back.
+  let checkT = 0;
+  function scheduleCheck() {
+    clearTimeout(checkT);
+    checkT = setTimeout(async () => {
+      if (connected || moved) return;
+      const st = await verifyServer();
+      if (st && es && es.readyState === 2) { wasDown = false; connect(); if (st.version !== S.version) softReload(); }
+      else if (!st && !moved) scheduleCheck();
+    }, 4000);
+  }
+  // After a lost connection, make sure the server now answering at this address is this plan's planboard
+  // (the plan may have moved to another port and something else taken this one). Returns its state or null.
+  async function verifyServer() {
+    let st;
+    try { const r = await fetch(API('state'), { cache: 'no-store' }); st = await r.json().catch(() => null); }
+    catch { return null; } // nothing answers: the server is just down, keep retrying
+    if (st && st.app === 'planboard' && st.id === ID) { trusted = true; return st; }
+    if (es) es.close();
+    moved = true; connected = false; updateTop();
+    if (!$('#pb-moved')) $('#pb-doc').prepend(h('div', { class: 'pb-banner pb-banner--error', id: 'pb-moved', text: "This page lost its planboard server, and something else now answers at this address. The plan probably moved to a new address: ask the agent to run planboard open and use the link it prints. Your unsent feedback is saved and will be there." }));
+    return null;
   }
   function softReload() {
     store.set(K.scroll, scrollY, true);
@@ -1726,7 +1767,7 @@ var PB_PARSE = (() => {
     else if (location.hash) { const t = document.getElementById(location.hash.slice(1)); if (t) setTimeout(() => t.scrollIntoView(), 50); }
   }
   function restoreDraft() {
-    const d = store.get(K.draft, '', true); const ta = $('#pb-input'); if (d && ta) { ta.value = d; autoGrow(ta); }
+    const d = store.get(K.draft, '', true) || (S.draft && S.draft.text) || ''; const ta = $('#pb-input'); if (d && ta) { ta.value = d; autoGrow(ta); }
     const p = store.get(K.draft + ':pop', null, true);
     if (p && p.text && p.text.trim()) {
       enqueue({ kind: 'comment', key: `comment:${rid()}`, mode: p.mode === 'ask' ? 'ask' : 'change', target: { ...p.t, quote: p.quote || undefined }, text: p.text.trim() });

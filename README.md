@@ -40,7 +40,7 @@ Claude investigates, writes the plan to `.plans/<date>-<name>/` in your project,
 - A diagram too big for its box has an **Expand** button (or double-click it): full screen, zoom with − / + / Fit / 100%, drag to pan, Esc to close.
 - **Answer** questions, **Confirm / Wrong / Correct** assumptions, **Choose** an option on decisions.
 - **Comment** on anything: hover a block (or tap it on a phone) and click the speech bubble, or select text. By keyboard: Tab to a section, arrow keys to move between its blocks, Enter to comment. Each section also has **Comment** and **Looks good** buttons in its heading. Pick **Change** (update the plan) or **Ask** (just answer me).
-- Everything queues in the **Conversation** panel (press **C**) until you press **Send**. Unsent feedback survives a reload.
+- Everything queues in the **Conversation** panel (press **C**) until you press **Send**. Unsent feedback survives a reload, and is also kept on the server, so it's still there in another browser.
 - After Claude revises, the page reloads by itself. Teal **Δ** marks and the **Δ N changed** button (on small screens: the **⋯** menu) show what changed since you last sent feedback, and **Step through the changes** walks you through them one at a time.
 - **Approve plan** when you're happy, and pick: build it here, write `plan.md`, write `handoff.md`, both, or let Claude decide.
 - **⋯ → End review** closes the review; Claude goes back to the terminal.
@@ -82,11 +82,13 @@ In these commands `planboard` means `node ~/.claude/skills/planboard/scripts/pla
 - **Something looks stuck.** `planboard stop`, then `planboard open <dir>`. Nothing is lost: feedback and the conversation live in the plan's `.planboard/` folder.
 - **Errors.** See `~/.planboard/server.log`.
 - **Port in use.** It moves to the next free port automatically. To pick another range: `export PLANBOARD_PORT=5600`.
-- **No browser opens** (Linux without a display, or over SSH). The link is printed instead. Over SSH, forward the port and open the link on your own machine:
+- **No browser opens** (Linux without a display, or over SSH). The link is printed instead. Over SSH, forward the port in that link (each plan has its own, and keeps it across restarts) and open the link on your own machine:
 
   ```sh
-  ssh -L 4517:127.0.0.1:4517 you@server
+  ssh -L 55060:127.0.0.1:55060 you@server   # use the port from the printed link
   ```
+
+- **The page says the plan moved.** The plan got a new address (its old port was taken when the server restarted). Ask Claude to run `planboard open` and use the new link; unsent feedback is kept on the server and shows up there.
 
 - **Claude reopened a review I ended.** It shouldn't; after you end a review it needs `open --reopen`, which it only runs when you ask.
 - **Diagram shows an error.** The page prints the parse error and the source; tell Claude, or point at it with a comment.

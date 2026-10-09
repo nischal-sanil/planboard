@@ -1478,7 +1478,15 @@ function cmdServe(a) {
       if (!['shell.js', 'shell.css'].includes(name)) return send(res, 404, 'Not found');
       return send(res, 200, fs.readFileSync(path.join(ASSETS, name)), name.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8');
     }
-    if (p === '/_api/state') return json(res, 200, { ...stateFor(id, dir), dir, status: statusOf(id) });
+    if (p === '/_api/state') return json(res, 200, { ...stateFor(id, dir), dir, status: statusOf(id), draft: readJSON(stPath(dir, 'draft.json'), null) });
+    // The page's unsent feedback, kept on the server too, so it survives a new browser, a cleared cache,
+    // or the plan moving to another port.
+    if (p === '/_api/draft' && req.method === 'POST') {
+      const b = await readBody(req, 500_000);
+      const queue = Array.isArray(b.queue) ? b.queue.filter((i) => i && ITEM_KINDS.has(i.kind)).slice(0, 200) : [];
+      writeJSON(stPath(dir, 'draft.json'), { queue, text: String(b.text || '').slice(0, 20000), at: Date.now() });
+      return json(res, 200, { ok: true });
+    }
     if (p === '/_api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
       res.write('retry: 1500\n\n');
@@ -1507,6 +1515,7 @@ function cmdServe(a) {
       if (items.some((i) => i.kind === 'end')) { mm.ended = true; mm.endedBy = 'user'; }
       setMeta(dir, mm);
       writeJSON(stPath(dir, 'queue.json'), [...queueOf(dir), batch]);
+      writeJSON(stPath(dir, 'draft.json'), { queue: [], text: '', at });
       const entry = { id: batch.id, at, from: 'user', kind: 'batch', round: batch.round, items };
       const tr = transcriptOf(dir); tr.push(entry);
       writeJSON(stPath(dir, 'transcript.json'), tr.slice(-500));
