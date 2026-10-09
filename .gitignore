@@ -1,0 +1,6 @@
+# review state and generated files that planboard writes next to a plan
+.planboard/
+plan.export.html
+.plans/
+
+.DS_Store

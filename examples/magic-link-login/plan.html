@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Add magic-link login</title>
+<style>
+  .ml-form { display: grid; gap: 8px; max-width: 320px; }
+  .ml-field { height: 36px; border: 1px solid var(--pb-rule-2); border-radius: 6px; padding: 0 10px; display: flex; align-items: center; color: var(--pb-ink-3); font-size: 14px; background: var(--pb-paper); }
+  .ml-btn { height: 36px; border-radius: 6px; display: grid; place-items: center; font-weight: 600; font-size: 14px; background: var(--pb-ink); color: var(--pb-paper); }
+  .ml-btn--ghost { background: transparent; color: var(--pb-ink); border: 1px solid var(--pb-rule-2); }
+  .ml-or { display: flex; align-items: center; gap: 10px; color: var(--pb-ink-3); font-size: 12.5px; margin: 6px 0; }
+  .ml-or::before, .ml-or::after { content: ''; flex: 1; height: 1px; background: var(--pb-rule); }
+  .ml-sent { border: 1px solid var(--pb-rule); border-radius: 8px; padding: 14px; max-width: 320px; font-size: 14px; }
+  .ml-sent b { display: block; font-size: 15px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<div data-pb="overview"></div>
+
+<section data-pb-section="flow" data-pb-title="How it works">
+  <h2>How it works</h2>
+  <p>Two requests: one to ask for a link, one when the link is clicked. The browser nonce makes a forwarded or leaked link useless in another browser.</p>
+  <pre class="pb-diagram" data-pb-id="flow-seq" data-caption="New pieces are green; the session code is reused as is.">
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant B as Browser
+  participant API as /api/auth/magic-link :::new
+  participant DB as Postgres
+  participant M as Postmark :::external
+  U->>B: Enters email, clicks "Email me a link"
+  B->>API: POST { email }
+  API->>DB: insert LoginToken (hash, expiresAt, nonce)
+  API->>M: send email with /auth/verify?token=…
+  API-->>B: 200 ok + Set-Cookie mlnonce
+  Note over U,B: User opens the email and clicks the link
+  B->>API: GET /auth/verify?token=… (cookie mlnonce)
+  API->>DB: find hash, check expiry + nonce, delete row
+  alt valid
+    API-->>B: createSession() → redirect /dashboard
+  else expired, reused, or other browser
+    API-->>B: "This link is invalid or expired"
+  end
+  </pre>
+  <div data-pb="question:q1"></div>
+</section>
+
+<section data-pb-section="architecture" data-pb-title="What changes">
+  <h2>What changes</h2>
+  <pre class="pb-diagram" data-pb-id="arch">
+flowchart LR
+  login["/login page"]:::changed --> form["MagicLinkForm"]:::new
+  form --> req["POST /api/auth/magic-link"]:::new
+  req --> tok["login-token.ts"]:::new
+  req --> mail["email.ts"]:::changed
+  mail --> pm[(Postmark)]:::external
+  tok --> db[(LoginToken table)]:::new
+  verify["/auth/verify"]:::new --> tok
+  verify --> sess["session.ts (unchanged)"]
+  cron["nightly purge"]:::new -.-> tok
+  </pre>
+  <p class="pb-small pb-muted"><span class="pb-tag pb-tag--new">new</span> <span class="pb-tag pb-tag--changed">changed</span> <span class="pb-tag pb-tag--external">external</span> Everything else stays as it is.</p>
+</section>
+
+<section data-pb-section="screens" data-pb-title="Login screen">
+  <h2>Login screen</h2>
+  <div class="pb-split">
+    <div class="pb-split__before" data-label="Before">
+      <div class="ml-form">
+        <div class="ml-field">Email</div>
+        <div class="ml-field">Password</div>
+        <div class="ml-btn">Sign in</div>
+      </div>
+    </div>
+    <div class="pb-split__arrow"></div>
+    <div class="pb-split__after" data-label="After">
+      <div class="ml-form" data-pb-id="screen-form" data-pb-label="new login form">
+        <div class="ml-field">Email</div>
+        <div class="ml-btn">Email me a link</div>
+        <div class="ml-or">or use your password</div>
+        <div class="ml-field">Password</div>
+        <div class="ml-btn ml-btn--ghost">Sign in with password</div>
+      </div>
+    </div>
+  </div>
+  <div class="pb-grid pb-grid--2">
+    <div class="pb-card" data-pb-id="screen-sent" data-pb-label="'check your email' state">
+      <div class="pb-card__title">After pressing "Email me a link"</div>
+      <div class="ml-sent"><b>Check your email</b>We sent a link to <span class="pb-mono">demo@example.com</span>. It works for 15 minutes in this browser.</div>
+    </div>
+    <div class="pb-card" data-pb-id="screen-fail" data-pb-label="invalid link page">
+      <div class="pb-card__title">Link invalid or expired</div>
+      <div class="ml-sent"><b>This link doesn't work anymore</b>It may have expired or been used already, or it was opened in a different browser.<div class="ml-btn" style="margin-top:10px">Send a new link</div></div>
+    </div>
+  </div>
+</section>
+
+<section data-pb-section="data" data-pb-title="Data shape">
+  <h2>Data shape</h2>
+  <figure class="pb-code" data-pb-id="model">
+    <figcaption>prisma/schema.prisma <span class="pb-tag pb-tag--new">new model</span></figcaption>
+<pre><code>model LoginToken {
+  id           String   @id @default(cuid())
+  tokenHash    String   @unique   // sha256(raw token); raw token only ever in the email
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  browserNonce String             // must match the mlnonce cookie
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([expiresAt])
+}</code></pre>
+  </figure>
+</section>
+
+<div data-pb="decisions"></div>
+<div data-pb="questions"></div>
+<div data-pb="assumptions"></div>
+<div data-pb="steps"></div>
+<div data-pb="files"></div>
+<div data-pb="risks"></div>
+<div data-pb="verification"></div>
+<div data-pb="sections"></div>
+</body>
+</html>

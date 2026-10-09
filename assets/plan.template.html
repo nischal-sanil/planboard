@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+  /* Plan-specific styles go here. Use the shell tokens (var(--pb-ink), var(--pb-rule), ...)
+     so the page works in light and dark mode. See references/components.md. */
+</style>
+</head>
+<body>
+<!--
+  HOW THIS PAGE WORKS
+  - Built-in blocks render from plan.json wherever you put a placeholder: <div data-pb="steps"></div>.
+    Any non-empty block you leave out is added at the end automatically.
+  - Single items can be placed inline next to the visual they belong to: <div data-pb="question:q1"></div>
+  - Your own sections: <section data-pb-section="some-id" data-pb-title="Nav label"> ... </section>
+    Anything with data-pb-id="..." inside them can be commented on directly.
+  - Diagrams without internet: <pre class="pb-diagram">flowchart LR ...</pre> (references/components.md).
+
+  WHAT TO SHOW FOR THIS KIND OF WORK
+  {{LENS_HINT}}
+  Delete the example section below and replace it with the visual that makes this plan click.
+-->
+
+<div data-pb="overview"></div>
+
+<section data-pb-section="picture" data-pb-title="How it works">
+  <h2>How it works</h2>
+  <p>Replace this with the one picture that explains the plan: a flow, an architecture, a before/after, a mock of the screen.</p>
+</section>
+
+<div data-pb="decisions"></div>
+<div data-pb="questions"></div>
+<div data-pb="assumptions"></div>
+<div data-pb="steps"></div>
+<div data-pb="files"></div>
+<div data-pb="risks"></div>
+<div data-pb="verification"></div>
+<div data-pb="sections"></div>
+</body>
+</html>
