@@ -136,7 +136,7 @@ function parseJSONWithPos(text, file) {
 function loadPlan(dir) {
   let text;
   try { text = fs.readFileSync(path.join(dir, 'plan.json'), 'utf8'); } catch { return { plan: null, error: 'plan.json not found' }; }
-  const r = parseJSONWithPos(text, 'plan.json');
+  const r = parseJSONWithPos(text.replace(/^\uFEFF/, ''), 'plan.json');
   return { plan: r.value, error: r.error };
 }
 
@@ -149,7 +149,8 @@ const VAGUE = [
   [/\bTBD\b/, 'TBD'], [/\bTODO\b/, 'TODO'], [/\bwhatever\b/i, 'whatever'], [/\baccordingly\b/i, 'accordingly'],
   [/\b(?:necessary|required|relevant) (?:changes|updates|files|places|parts|logic)\b/i, 'unnamed "necessary changes"'],
   [/\bhandle (?:it|this|that|errors|edge cases)\b(?![^.;:\n]{0,60}\b(?:by|with|via|using)\b)/i, 'handle … (say how)'],
-  [/\bclean(?: |-)?up\b(?! (?:the|by|of|job|task|step|script|cron|routine|run)\b)/i, 'clean up (say what)'],
+  // "clean up" with nothing concrete after it ("clean up.", "clean up the code", "clean up everything")
+  [/\bclean(?: |-)?up\b(?=\s*(?:$|[.,;:!)]|(?:it|this|that|things|stuff|everything|code|the code|afterwards?|as needed)\b))/im, 'clean up (say what)'],
   [/(?:\.\.\.|…)[ \t]*$/m, 'trailing …'],
   [/\bstuff\b/i, 'stuff'], [/\bnice to have\b/i, 'nice to have (in or out?)'],
 ];
@@ -830,8 +831,11 @@ function formatFeedback(r, dir, { after = null } = {}) {
   L.push(`FEEDBACK on ${rel(dir)} — ${items.length} item${items.length === 1 ? '' : 's'}${advanced ? ` (round ${r.round}: the page marks with Δ whatever you change next)` : onlyAsks ? ' (questions only; the plan\'s round is unchanged)' : ''}`, '');
   const again2 = new Set(Array.isArray(r.redelivered) ? r.redelivered : []);
   if (again2.size) {
-    const n = r.batches.filter((b) => again2.has(b.id)).reduce((k, b) => k + b.items.length, 0);
-    const which = n === 1 ? (items.length === 1 ? 'This item was' : '1 of these items was') : n === items.length ? `All ${n} items were` : `${n} of these items were`;
+    // item numbers as printed below
+    const nums = []; let k = 0;
+    for (const b of r.batches) for (const _ of b.items) { k++; if (again2.has(b.id)) nums.push(k); }
+    const n = nums.length;
+    const which = n === items.length ? (n === 1 ? 'This item was' : `All ${n} items were`) : `${n === 1 ? 'Item' : 'Items'} ${nums.map((x) => `[${x}]`).join(', ')} ${n === 1 ? 'was' : 'were'}`;
     L.push(`NOTE: ${which} delivered before, but the earlier wait ended before confirming it got ${n === 1 ? 'it' : 'them'}. Check whether you already applied ${n === 1 ? 'it' : 'them'} (look at plan.json and your last reply) before applying again.`, '');
   }
   items.forEach((it, i) => L.push(fmtItem(it, i + 1)));
