@@ -1269,6 +1269,8 @@ function buildStandalone(dir, plan, { withConversation = false } = {}) {
   return injectInto(html, head, tail);
 }
 function injectInto(html, head, tail) {
+  // the frame is responsive; without this, phones lay the page out 980 px wide
+  if (!/<meta[^>]+name\s*=\s*["']?viewport/i.test(html)) head = '<meta name="viewport" content="width=device-width, initial-scale=1">' + head;
   const hm = /<head[^>]*>/i.exec(html);
   html = hm ? html.slice(0, hm.index + hm[0].length) + head + html.slice(hm.index + hm[0].length) : head + html;
   const bi = html.toLowerCase().lastIndexOf('</body>');
