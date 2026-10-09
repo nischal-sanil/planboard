@@ -83,7 +83,7 @@ Reopening an ended review (`open --reopen`) starts a new review round: the earli
 1. Work through the steps in order. As you start a step, set its `status` to `"doing"` in `plan.json`; when every done-when check passes, set it to `"done"` (or `"skipped"` with a `notes` line saying why). The page reloads on each save and shows progress: the step tags, the progress bar, and the step count in the overview.
 2. Between steps, run `planboard poll <dir>`. It returns at once: "No new feedback." or the user's comments. Apply CHANGE comments before the next step; answer ASK comments with `reply`. Because the user chose "Build it here", the output ends with "continue with the next step and check again between steps" instead of telling you to wait.
 3. If the plan turns out wrong mid-build (a done-when can't be met, a file isn't where the plan said), update the step in `plan.json` so the page stays true, and say what changed in a reply.
-4. If you need the user's decision to continue, add a question or decision to `plan.json`, `reply` that you're blocked on it, and `wait` (Bash timeout 600000).
+4. If you need the user's decision to continue, add a question or decision to `plan.json`, `reply` that you're blocked on it, and listen with `planboard wait <dir> --background` as a background command.
 5. When done, run the plan's `verification` checks, then post the final reply.
 
 Don't check off a done-when you didn't actually run. If a check can't run here (needs production, a device, a person), leave the step `doing` and say so.

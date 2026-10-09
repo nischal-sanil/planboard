@@ -17,8 +17,8 @@ In every command below, `planboard` means `node <this skill's directory>/scripts
 4. **Fill `plan.html`** — the free-form part where you show the plan in whatever form explains it best: flows, architecture, before/after, UI mocks, data shapes, timelines, comparisons. Read `references/design.md` (how to choose and write the visuals), `references/components.md` (building blocks and the offline diagram syntax), and `references/lenses.md` (what each kind of work must show).
 5. **Check:** `planboard check <dir>` and fix every error and the warnings that are real. Then do the cold-start test yourself: could a fresh agent with no memory of this conversation do every step from the plan alone without asking anything? If not, add what is missing.
 6. **Open:** `planboard open <dir>` (it also sets `"status": "in-review"`). Tell the user in one line that the plan is open and what you most need from them (e.g. "2 questions and 1 decision need you").
-7. **Wait:** `planboard wait <dir>` with the Bash tool timeout set to `600000`. It returns when the user sends feedback, or after ~9 minutes with "No feedback yet" — then run it again. If a wait is cut off before it prints, the next `wait` or `poll` delivers the same feedback again; `planboard last <dir>` re-prints the most recent delivery.
-8. **Apply the feedback.** The output lists each item and says what to do. Record answers, assumption verdicts, and decisions in `plan.json` (see "Applying feedback"), update everything that depends on them, run `check`, then `planboard reply <dir> "<what changed, answers to ASK items>"` (the folder always comes first) and wait again. The page reloads by itself and marks what you changed with Δ.
+7. **Listen in the background:** run `planboard wait <dir> --background` with the Bash tool's `run_in_background: true`, then end your turn. Claude Code wakes you when the command exits, which is the moment the user presses Send; read its output (or run `planboard last <dir>` to re-print what was delivered). Meanwhile the user can keep talking to you in the terminal; the background wait keeps listening. Without background commands, run `planboard wait <dir>` in the foreground with the Bash tool timeout set to `600000`; it returns after ~9 minutes with "No feedback yet", then run it again. If a wait is cut off before it prints, the next `wait` or `poll` delivers the same feedback again.
+8. **Apply the feedback.** The output lists each item and says what to do. Record answers, assumption verdicts, and decisions in `plan.json` (see "Applying feedback"), update everything that depends on them, run `check`, then `planboard reply <dir> "<what changed, answers to ASK items>"` (the folder always comes first) and start the background wait again. The page reloads by itself and marks what you changed with Δ.
 9. **On approval**, produce what the user picked, following `references/outputs.md`: build here, `plan.md`, `handoff.md`, or both.
 
 Keep terminal messages to one or two lines while the page is open; the page and your page replies carry the detail.
@@ -59,7 +59,7 @@ Keep terminal messages to one or two lines while the page is open; the page and 
 | APPROVED | Apply the other items in the same batch first. Put the approval `note` (if any) in `context` or the step it concerns. Set `"status": "approved"` and produce the chosen output (`references/outputs.md`). Don't wait again unless asked. |
 | ENDED | Stop waiting. Continue in the terminal. Don't reopen the page unless the user asks (`open --reopen`). |
 
-If the user types in the terminal while the page is open, answer there and keep the plan in sync; the page reloads on its own.
+If the user types in the terminal while the page is open, answer there and keep the plan in sync; the page reloads on its own. A background wait that is already running keeps listening; don't start a second one (a newer wait replaces the older).
 
 ## Files
 

@@ -45,7 +45,7 @@ Claude investigates, writes the plan to `.plans/<date>-<name>/` in your project,
 - **Approve plan** when you're happy, and pick: build it here, write `plan.md`, write `handoff.md`, both, or let Claude decide.
 - **⋯ → End review** closes the review; Claude goes back to the terminal.
 
-The top bar shows whether Claude is listening: *Agent is waiting for you* (your feedback arrives instantly), *Agent is working…* (it has your feedback), or *Agent not listening* (what you send is saved and delivered when it next checks).
+Claude listens for your feedback in the background, so you can keep chatting with it in the terminal while the page is open; when you press **Send** it picks your feedback up right away. The top bar shows whether Claude is listening: *Agent is waiting for you* (your feedback arrives instantly), *Agent is working…* (it has your feedback), or *Agent not listening* (what you send is saved and delivered when it next checks).
 
 ## What ends up in your project
 

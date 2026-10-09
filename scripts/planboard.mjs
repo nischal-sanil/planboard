@@ -21,7 +21,8 @@ const HOME = process.env.PLANBOARD_HOME || path.join(os.homedir(), '.planboard')
 const BASE_PORT = Number(process.env.PLANBOARD_PORT) || 4517;
 const HOST = '127.0.0.1';
 const IDLE_MS = (Number(process.env.PLANBOARD_IDLE_MINUTES) || 180) * 60_000;
-const WAIT_DEFAULT_S = 540;
+const WAIT_DEFAULT_S = 540;      // foreground: fits inside Claude Code's 10-minute Bash limit
+const WAIT_BACKGROUND_S = 86400; // --background: a background command can listen for a day
 const LENSES = ['feature', 'new-project', 'refactor', 'non-code', 'generic'];
 const ITEM_KINDS = new Set(['answer', 'assumption', 'decision', 'comment', 'message', 'approve-section', 'approve', 'end', 'custom']);
 const OUTPUTS = {
@@ -67,7 +68,7 @@ function localDate(d = new Date()) { return `${d.getFullYear()}-${String(d.getMo
 function indent(s, n = 4) { const pad = ' '.repeat(n); return String(s).split('\n').map((l) => pad + l).join('\n'); }
 
 function parseArgs(argv) {
-  const BOOL = new Set(['no-open', 'reopen', 'json', 'handoff', 'html', 'force', 'help', 'with-conversation', 'skip-check', 'update']);
+  const BOOL = new Set(['no-open', 'reopen', 'json', 'handoff', 'html', 'force', 'help', 'with-conversation', 'skip-check', 'update', 'background']);
   const VALUE = new Set(['lens', 'root', 'timeout', 'file', 'out', 'port']);
   const out = { _: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -856,14 +857,13 @@ function fmtItem(i, n) {
 const isChangeItem = (i) => ['answer', 'assumption', 'decision', 'custom'].includes(i.kind) || (['comment', 'message'].includes(i.kind) && i.mode !== 'ask');
 function formatFeedback(r, dir, { after = null } = {}) {
   const D = shq(rel(dir));
-  const again = `${CMD} wait ${D}`;
   const poll = `${CMD} poll ${D}`;
   if (r.type === 'timeout') {
     const tab = r.clients === 0 ? 'No browser tab has the plan open right now; if the user closed it, tell them the link or run open again.' : 'The page is open in the browser.';
-    return `No feedback yet (waited ${fmtDuration(r.waited)}). ${tab}\nRun again with the Bash tool timeout set to 600000: ${again}`;
+    return `No feedback yet (waited ${fmtDuration(r.waited)}). ${tab}\n${listenAgain(D)}`;
   }
   if (r.type === 'none') return 'No new feedback.';
-  if (r.type === 'replaced') return `Another wait on this plan took over (a newer \`wait\`, from this session or another one). If you didn't start one, keep listening: ${again}`;
+  if (r.type === 'replaced') return `Another wait on this plan took over (a newer \`wait\`, from this session or another one). If you didn't start one:\n${listenAgain(D)}`;
   if (r.type === 'ended') return endedText(r.by, dir);
   const items = r.batches.flatMap((b) => b.items);
   const L = [];
@@ -920,9 +920,15 @@ function formatFeedback(r, dir, { after = null } = {}) {
   } else {
     L.push(`- Run \`${CMD} check ${D}\` and fix errors.`);
     L.push(`- Reply in the page: \`${CMD} reply ${D} "<what you changed, answers to ASK items>"\` (use --file for long replies).`);
-    L.push(`- Then wait again, Bash timeout 600000: ${again}`);
+    L.push(`- ${listenAgain(D)}`);
   }
   return L.join('\n');
+}
+// How to keep listening. Background first: Claude Code runs the command in the background and wakes the agent
+// when it exits, i.e. the moment the user sends feedback; the agent stays free to talk in the meantime.
+function listenAgain(D) {
+  return `Listen again in the background (Bash tool with run_in_background: true; you're woken when the user sends feedback): ${CMD} wait ${D} --background
+  Without background commands: ${CMD} wait ${D} with the Bash tool timeout set to 600000, repeated on "No feedback yet".`;
 }
 function endedText(by, dir) {
   return by === 'user'
@@ -1019,8 +1025,10 @@ async function cmdOpen(a) {
   const D = shq(rel(dir));
   print(`Plan page: ${reg.url}${opened === 'already' ? '  (already open in a browser tab — it reloads on its own)' : opened ? '  (opened in the browser)' : '  (open this link in a browser)'}${reopened ? '\nThe review was ended; it is open again.' : ''}
 check: ${lintSummary(lint)}${lint.errors.length ? `\nFix the errors first: ${CMD} check ${D}` : ''}
-Next: tell the user in one line that the plan is open, then wait for feedback (Bash timeout 600000):
-  ${CMD} wait ${D}`);
+Next: tell the user in one line that the plan is open, then listen for feedback in the background (Bash tool with
+run_in_background: true). You're woken when the user sends feedback, and can keep talking with them meanwhile:
+  ${CMD} wait ${D} --background
+Without background commands: ${CMD} wait ${D} with the Bash tool timeout set to 600000, repeated on "No feedback yet".`);
 }
 // What the agent should do with feedback that arrives after approval. null while the plan is under review
 // (plan.json "status" isn't "approved"). Otherwise { mode, output, files }: mode 'build' (building in this
@@ -1042,8 +1050,8 @@ async function cmdWait(a, nonBlocking = false) {
   const dir = resolvePlanDir(a._[1]);
   let t = 0;
   if (!nonBlocking) {
-    t = a.timeout == null ? WAIT_DEFAULT_S : Number(a.timeout);
-    if (!Number.isFinite(t) || t < 1 || t > 3600) fail(`--timeout must be between 1 and 3600 seconds (got "${a.timeout}"). For a non-blocking check use: ${CMD} poll ${shq(rel(dir))}`);
+    t = a.timeout == null ? (a.background ? WAIT_BACKGROUND_S : WAIT_DEFAULT_S) : Number(a.timeout);
+    if (!Number.isFinite(t) || t < 1 || t > WAIT_BACKGROUND_S) fail(`--timeout must be between 1 and ${WAIT_BACKGROUND_S} seconds (got "${a.timeout}"). For a non-blocking check use: ${CMD} poll ${shq(rel(dir))}`);
   }
   const port = await ensureServer();
   const { id } = await register(port, dir);
@@ -1195,9 +1203,10 @@ In commands below, "planboard" means: ${CMD}
   open [dir] [--no-open] [--reopen]
                           Start the local server and open the plan in the browser.
                           A review the user ended needs --reopen; one you ended reopens as is.
-  wait [dir] [--timeout s] [--json]
-                          Block until the user sends feedback (default 540 s;
-                          call with the Bash tool timeout set to 600000)
+  wait [dir] [--background] [--timeout s] [--json]
+                          Return when the user sends feedback. --background listens up to
+                          24 h: run it as a background command and you're woken when it
+                          returns. Without it: 540 s, for a Bash tool timeout of 600000.
   poll [dir]              Non-blocking: print feedback if any is queued
   reply <dir> "<text>"    Post a reply in the page (or --file <path>, --file - for stdin)
   last [dir]              Re-print the last feedback delivered (if a wait was cut off)
@@ -1458,7 +1467,7 @@ function cmdServe(a) {
     if (!dir) return json(res, 404, { error: 'Unknown plan. Open it again from the terminal.' });
 
     if (route === 'wait') {
-      const t = Math.max(0, Math.min(Number(url.searchParams.get('timeout')) || 0, 3600));
+      const t = Math.max(0, Math.min(Number(url.searchParams.get('timeout')) || 0, WAIT_BACKGROUND_S));
       const s = L(id);
       const mm = meta(dir);
       if (queueOf(dir).length || pendingOf(dir).length) {
