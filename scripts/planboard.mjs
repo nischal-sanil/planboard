@@ -855,14 +855,19 @@ function formatFeedback(r, dir, { after = null } = {}) {
     L.push(`- The user ended the review. Apply what is above, then continue in the terminal. Don't run wait or reopen the page unless they ask.`);
   } else if (r.ended) {
     L.push(`- You ended this review earlier. Apply what is above and reply if needed; reopen the page only if the user asks.`);
-  } else if (after === 'build') {
+  } else if (after && after.mode === 'build') {
     L.push(`- Run \`${CMD} check ${D}\` and fix errors.`);
     L.push(`- Reply in the page: \`${CMD} reply ${D} "<what you changed, answers to ASK items>"\`.`);
-    L.push(`- You're building (the user chose "Build it here"): continue with the next step and check again between steps with: ${poll}  (don't run wait).`);
-  } else if (after === 'files') {
+    L.push(`- You're building (${after.output === 'continue' ? 'the user chose "Build it here"' : 'the user let you choose and you chose to build'}): continue with the next step and check again between steps with: ${poll}  (don't run wait).`);
+  } else if (after && after.mode === 'files') {
     L.push(`- Run \`${CMD} check ${D}\` and fix errors.`);
-    L.push(`- The plan is approved and its output was written: bring it up to date too — \`${CMD} export ${D}\` for plan.md, \`${CMD} export ${D} --handoff --update\` for handoff.md (keeps your filled-in parts).`);
+    const how = { 'plan.md': `\`${CMD} export ${D}\` (rebuilds plan.md)`, 'handoff.md': `\`${CMD} export ${D} --handoff --update\` (rebuilds handoff.md, keeps your filled-in parts)` };
+    L.push(`- The plan is approved and ${after.files.join(' and ')} ${after.files.length > 1 ? 'are' : 'is'} the output: bring ${after.files.length > 1 ? 'them' : 'it'} up to date with ${after.files.map((f) => how[f]).join(' and ')}.`);
     L.push(`- Reply in the page: \`${CMD} reply ${D} "<what you changed>"\`. Don't run wait unless the user asks for more review.`);
+  } else if (after && after.mode === 'pick') {
+    L.push(`- Run \`${CMD} check ${D}\` and fix errors.`);
+    L.push(`- The user approved the plan and let you choose the output, and you haven't produced one yet: apply the feedback above, then pick and produce it following ${REFS}/outputs.md.`);
+    L.push(`- Reply in the page: \`${CMD} reply ${D} "<what you changed>"\`.`);
   } else {
     L.push(`- Run \`${CMD} check ${D}\` and fix errors.`);
     L.push(`- Reply in the page: \`${CMD} reply ${D} "<what you changed, answers to ASK items>"\` (use --file for long replies).`);
@@ -937,13 +942,13 @@ function cmdCheck(a) {
   process.exit(r.errors.length ? 1 : 0);
 }
 // The page shows "Draft" until the plan is under review; opening it is that moment.
-function markInReview(dir) {
+function markInReview(dir, from = ['draft']) {
   const f = path.join(dir, 'plan.json');
   try {
-    const text = fs.readFileSync(f, 'utf8'); const plan = JSON.parse(text);
-    if (plan.status && plan.status !== 'draft') return;
+    const text = fs.readFileSync(f, 'utf8'); const plan = JSON.parse(text.replace(/^\uFEFF/, ''));
+    if (plan.status && !from.includes(plan.status)) return;
     // edit the text in place so the agent's own formatting survives
-    const next = plan.status ? text.replace(/("status"\s*:\s*)"draft"/, '$1"in-review"') : text.replace(/^(\s*\{)(\s*)/, (m, brace, ws) => `${brace}${ws || '\n  '}"status": "in-review",${ws || '\n  '}`);
+    const next = plan.status ? text.replace(new RegExp(`("status"\\s*:\\s*)"${plan.status}"`), '$1"in-review"') : text.replace(/^(\s*\{)(\s*)/, (m, brace, ws) => `${brace}${ws || '\n  '}"status": "in-review",${ws || '\n  '}`);
     if (next !== text) fs.writeFileSync(f, next);
   } catch { }
 }
@@ -952,9 +957,11 @@ async function cmdOpen(a) {
   const m = meta(dir);
   if (m.ended && m.endedBy === 'user' && !a.reopen) { print(endedText('user', dir)); return; }
   const reopened = !!m.ended;
-  if (m.ended) { m.ended = false; m.endedBy = null; setMeta(dir, m); }
+  // reopening starts a new review round: the earlier approval no longer decides what feedback means
+  if (m.ended) { m.ended = false; m.endedBy = null; delete m.approvedOutput; delete m.approvedAt; setMeta(dir, m); }
   const lint = lintDir(dir);
-  if (!lint.errors.length) markInReview(dir);
+  // opening starts (or, after an ended review, restarts) the review
+  if (!lint.errors.length) markInReview(dir, reopened ? ['draft', 'approved'] : ['draft']);
   const port = await ensureServer();
   const reg = await request(port, 'POST', '/_api/register', { dir, reopened });
   let opened = false;
@@ -966,13 +973,21 @@ check: ${lintSummary(lint)}${lint.errors.length ? `\nFix the errors first: ${CMD
 Next: tell the user in one line that the plan is open, then wait for feedback (Bash timeout 600000):
   ${CMD} wait ${D}`);
 }
-// After approval: 'build' when the user chose "Build it here" (or let the agent decide and it started building),
-// 'files' when they chose plan.md / handoff.md; null while the plan is still under review.
+// What the agent should do with feedback that arrives after approval. null while the plan is under review
+// (plan.json "status" isn't "approved"). Otherwise { mode, output, files }: mode 'build' (building in this
+// session), 'files' (plan.md / handoff.md were chosen or written; files lists which), or 'pick' (the user let
+// the agent decide and nothing has been produced yet).
 function afterApproval(dir) {
   const m = meta(dir); const { plan } = loadPlan(dir);
-  if (!m.approvedOutput && !(plan && plan.status === 'approved')) return null;
-  const started = !!plan && Array.isArray(plan.steps) && plan.steps.some((x) => x && ['doing', 'done'].includes(x.status));
-  return m.approvedOutput === 'continue' || ((m.approvedOutput === 'agent' || !m.approvedOutput) && started) ? 'build' : 'files';
+  if (!plan || plan.status !== 'approved') return null;
+  const output = m.approvedOutput || 'agent';
+  const started = Array.isArray(plan.steps) && plan.steps.some((x) => x && ['doing', 'done'].includes(x.status));
+  const have = ['plan.md', 'handoff.md'].filter((f) => fs.existsSync(path.join(dir, f)));
+  const chosen = { 'plan-md': ['plan.md'], 'handoff-md': ['handoff.md'], both: ['plan.md', 'handoff.md'] }[output];
+  if (output === 'continue' || (output === 'agent' && started)) return { mode: 'build', output };
+  if (chosen) return { mode: 'files', output, files: chosen };
+  if (have.length) return { mode: 'files', output, files: have };
+  return { mode: 'pick', output };
 }
 async function cmdWait(a, nonBlocking = false) {
   const dir = resolvePlanDir(a._[1]);
