@@ -1079,6 +1079,10 @@ async function cmdWait(a, nonBlocking = false) {
   }
   const port = await ensureServer();
   const { id } = await register(port, dir);
+  // A background wait outlives nothing: if the session that started it goes away (we get re-parented),
+  // stop, so the page doesn't say "Agent is waiting" with nobody listening.
+  const parent = process.ppid;
+  if (t > 0) setInterval(() => { if (process.ppid !== parent) process.exit(0); }, 3000).unref();
   let r;
   try { r = await request(port, 'GET', `/p/${id}/_api/wait?timeout=${t}`, null, (t + 30) * 1000); }
   catch (e) {
