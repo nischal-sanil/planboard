@@ -1112,7 +1112,9 @@ var PB_PARSE = (() => {
         h('button', { class: 'pb-btn pb-btn--ghost pb-btn--sm', type: 'button', title: 'Comment on this section', html: ICON.comment + 'Comment', onclick: () => openPop(sec) }),
         h('button', { class: 'pb-btn pb-btn--ghost pb-btn--sm pb-sec-ok', type: 'button', 'data-pb-ok': sid, 'aria-pressed': 'false', title: 'Looks good — mark this section settled', html: ICON.check + 'Looks good', onclick: () => toggleLooksGood(sec) }));
       const slot = $(':scope > .pb-block__head > .pb-block__tools', sec) || $(':scope > .pb-overview__lens', sec);
-      if (slot) slot.prepend(tools);
+      // in a block header the buttons go before its own tools ("Titles only" stays at the right edge); in the
+      // overview they follow the lens and status tags
+      if (slot) slot.matches('.pb-overview__lens') ? slot.append(tools) : slot.prepend(tools);
       else { const hd = $(':scope > h1, :scope > h2, :scope > h3', sec) || $('h1, h2, h3', sec); tools.classList.add('pb-sec-tools--float'); (hd || sec).prepend(tools); }
     }
   }
