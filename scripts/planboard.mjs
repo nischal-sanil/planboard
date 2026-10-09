@@ -40,6 +40,8 @@ const sessionId = (dir) => crypto.createHash('sha1').update(dir).digest('hex').s
 function shq(s) { return /^[\w@%+=:,./~-]+$/.test(s) ? s : `'${String(s).replace(/'/g, `'\\''`)}'`; }
 function tildify(p) { const h = os.homedir(); return p.startsWith(h + path.sep) && !/\s/.test(p) ? '~' + p.slice(h.length) : p; }
 const CMD = `node ${shq(tildify(SELF))}`;
+// The plan folder as a command argument: absolute (with ~), so a copied command works from any directory.
+function planArg(dir) { return shq(tildify(dir)); }
 function rel(p) {
   const r = path.relative(process.cwd(), p);
   return r && !r.startsWith('..') && !path.isAbsolute(r) ? r : p;
@@ -98,7 +100,9 @@ function resolvePlanDir(arg) {
   if (arg) {
     let p = path.resolve(arg.replace(/^~(?=\/)/, os.homedir()));
     if (fs.existsSync(p) && fs.statSync(p).isFile()) p = path.dirname(p);
-    if (!fs.existsSync(path.join(p, 'plan.json'))) fail(`No plan.json in ${p}. Create one with: ${CMD} new "<title>"`);
+    if (!fs.existsSync(path.join(p, 'plan.json'))) fail(/[\\/]\.plans[\\/]/.test(p) || /^\.plans[\\/]/.test(arg)
+      ? `No plan.json in ${p}. A relative path is resolved from ${process.cwd()}; pass the plan folder's full path (planboard's own output prints it).`
+      : `No plan.json in ${p}. Create a plan with: ${CMD} new "<title>"`);
     return fs.realpathSync(p);
   }
   // No argument: newest plan in the nearest .plans/ (this directory or a parent)
@@ -604,7 +608,7 @@ function toPlanMd(plan, dir) {
   const L = [];
   L.push(`# ${oneLine(plan.title, 300)}`, '');
   L.push(`> Status: **${plan.status || 'draft'}** · lens: ${plan.lens || 'generic'} · review round ${m.round} · exported ${localDate()}`);
-  L.push(`> Generated from \`${rel(dir)}/plan.json\`; edit that file, not this one (regenerate: \`${CMD} export ${shq(rel(dir))}\`). Steps are in order; finish each step's "Done when" before starting the next. Ids like \`q1\`, \`a2\`, \`d1\`, \`s3\` refer to the items below.`, '');
+  L.push(`> Generated from \`${rel(dir)}/plan.json\`; edit that file, not this one (regenerate: \`${CMD} export ${planArg(dir)}\`). Steps are in order; finish each step's "Done when" before starting the next. Ids like \`q1\`, \`a2\`, \`d1\`, \`s3\` refer to the items below.`, '');
   if (plan.summary) L.push('## Summary', '', plan.summary, '');
   L.push('## Goal', '', plan.goal || '_(missing)_', '');
   if (strArr(plan.non_goals).length) { L.push('**Not doing:**', ''); for (const g of strArr(plan.non_goals)) L.push(`- ${g}`); L.push(''); }
@@ -870,7 +874,7 @@ function fmtItem(i, n) {
 }
 const isChangeItem = (i) => ['answer', 'assumption', 'decision', 'custom'].includes(i.kind) || (['comment', 'message'].includes(i.kind) && i.mode !== 'ask');
 function formatFeedback(r, dir, { after = null } = {}) {
-  const D = shq(rel(dir));
+  const D = planArg(dir);
   const poll = `${CMD} poll ${D}`;
   if (r.type === 'timeout') {
     const tab = r.clients === 0 ? 'No browser tab has the plan open right now; if the user closed it, tell them the link or run open again.' : 'The page is open in the browser.';
@@ -947,8 +951,8 @@ function listenAgain(D) {
 }
 function endedText(by, dir) {
   return by === 'user'
-    ? `The user ended the review in the browser. Stop waiting. Continue in the terminal; don't reopen the page unless they ask (then use: ${CMD} open ${shq(rel(dir))} --reopen).`
-    : `This review was ended from the terminal. Reopen it with: ${CMD} open ${shq(rel(dir))}`;
+    ? `The user ended the review in the browser. Stop waiting. Continue in the terminal; don't reopen the page unless they ask (then use: ${CMD} open ${planArg(dir)} --reopen).`
+    : `This review was ended from the terminal. Reopen it with: ${CMD} open ${planArg(dir)}`;
 }
 
 // ---------- commands ----------
@@ -987,8 +991,8 @@ function cmdNew(a) {
   print(`Created ${R}/ with plan.json and plan.html (lens: ${lens}).
 Next:
   1. Fill plan.json (${REFS}/plan-schema.md) and plan.html (${REFS}/design.md, ${REFS}/components.md).
-  2. ${CMD} check ${shq(R)}
-  3. ${CMD} open ${shq(R)}${gitHint}`);
+  2. ${CMD} check ${planArg(dir)}
+  3. ${CMD} open ${planArg(dir)}${gitHint}`);
 }
 function printHandoffCheck(f) {
   const r = lintHandoff(fs.readFileSync(f, 'utf8'));
@@ -1000,7 +1004,7 @@ function cmdCheck(a) {
   const dir = resolvePlanDir(a._[1]);
   if (a.handoff) {
     const f = path.join(dir, 'handoff.md');
-    if (!fs.existsSync(f)) fail(`No handoff.md in ${rel(dir)}. Create it with: ${CMD} export ${shq(rel(dir))} --handoff  (or pass the file: ${CMD} check <path/to/handoff.md> --handoff)`);
+    if (!fs.existsSync(f)) fail(`No handoff.md in ${rel(dir)}. Create it with: ${CMD} export ${planArg(dir)} --handoff  (or pass the file: ${CMD} check <path/to/handoff.md> --handoff)`);
     return printHandoffCheck(f);
   }
   const r = lintDir(dir);
@@ -1037,7 +1041,7 @@ async function cmdOpen(a) {
   let opened = false;
   if (reg.clients > 0) opened = 'already';
   else if (!a['no-open'] && !process.env.PLANBOARD_NO_OPEN) opened = openBrowser(reg.url);
-  const D = shq(rel(dir));
+  const D = planArg(dir);
   print(`Plan page: ${reg.url}${opened === 'already' ? '  (already open in a browser tab — it reloads on its own)' : opened ? '  (opened in the browser)' : '  (open this link in a browser)'}${reopened ? '\nThe review was ended; it is open again.' : ''}
 check: ${lintSummary(lint)}${lint.errors.length ? `\nFix the errors first: ${CMD} check ${D}` : ''}
 Next: tell the user in one line that the plan is open, then listen for feedback in the background (Bash tool with
@@ -1066,14 +1070,14 @@ async function cmdWait(a, nonBlocking = false) {
   let t = 0;
   if (!nonBlocking) {
     t = a.timeout == null ? (a.background ? WAIT_BACKGROUND_S : WAIT_DEFAULT_S) : Number(a.timeout);
-    if (!Number.isFinite(t) || t < 1 || t > WAIT_BACKGROUND_S) fail(`--timeout must be between 1 and ${WAIT_BACKGROUND_S} seconds (got "${a.timeout}"). For a non-blocking check use: ${CMD} poll ${shq(rel(dir))}`);
+    if (!Number.isFinite(t) || t < 1 || t > WAIT_BACKGROUND_S) fail(`--timeout must be between 1 and ${WAIT_BACKGROUND_S} seconds (got "${a.timeout}"). For a non-blocking check use: ${CMD} poll ${planArg(dir)}`);
   }
   const port = await ensureServer();
   const { id } = await register(port, dir);
   let r;
   try { r = await request(port, 'GET', `/p/${id}/_api/wait?timeout=${t}`, null, (t + 30) * 1000); }
   catch (e) {
-    print(`The wait was interrupted (${e.message}). Nothing is lost: undelivered feedback stays queued. Run again: ${CMD} wait ${shq(rel(dir))}`);
+    print(`The wait was interrupted (${e.message}). Nothing is lost: undelivered feedback stays queued.\n${listenAgain(planArg(dir))}`);
     process.exit(0);
   }
   if (a.json) print(JSON.stringify(r, null, 2));
@@ -1173,7 +1177,7 @@ function cmdExport(a) {
   if (a.handoff) {
     const out = path.resolve(a.out || path.join(dir, 'handoff.md'));
     const exists = fs.existsSync(out);
-    if (a.update && !exists) fail(`There is no ${rel(out)} to update. Create it with: ${CMD} export ${shq(rel(dir))} --handoff${a.out ? ` --out ${shq(a.out)}` : ''}`);
+    if (a.update && !exists) fail(`There is no ${rel(out)} to update. Create it with: ${CMD} export ${planArg(dir)} --handoff${a.out ? ` --out ${shq(a.out)}` : ''}`);
     if (exists && !a.force && !a.update) fail(`${rel(out)} already exists (it may hold your filled-in notes). Use --update to rebuild it from plan.json and keep your filled-in parts, --force to start over, or --out <path>.`);
     let text = toHandoffMd(plan, dir); let kept = 0; let backup = null;
     if (exists && (a.update || a.force)) {
