@@ -151,7 +151,7 @@ const VAGUE = [
   [/\b(?:necessary|required|relevant) (?:changes|updates|files|places|parts|logic)\b/i, 'unnamed "necessary changes"'],
   [/\bhandle (?:it|this|that|errors|edge cases)\b(?![^.;:\n]{0,60}\b(?:by|with|via|using)\b)/i, 'handle … (say how)'],
   // "clean up" with nothing concrete after it ("clean up.", "clean up the code", "clean up everything")
-  [/\bclean(?: |-)?up\b(?=\s*(?:$|[.,;:!)]|(?:it|this|that|things|stuff|everything|code|the code|afterwards?|as needed)\b))/im, 'clean up (say what)'],
+  [/\bclean(?: |-)?up\b(?=\s*(?:$|[.,;:!)]|(?:it|this|that|things|stuff|everything|code|the code|(?:the )?mess|afterwards?|as needed)\b))/im, 'clean up (say what)'],
   [/(?:\.\.\.|…)[ \t]*$/m, 'trailing …'],
   [/\bstuff\b/i, 'stuff'], [/\bnice to have\b/i, 'nice to have (in or out?)'],
 ];
