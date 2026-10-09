@@ -1802,6 +1802,9 @@ var PB_PARSE = (() => {
       if (d.entry && d.entry.from === 'user' && d.entry.kind === 'batch') {
         const keys = new Set(d.entry.items.map((x) => x.key));
         if (queue.some((i) => keys.has(i.key))) { queue = queue.filter((i) => !keys.has(i.key)); saveQueue(); onQueueChanged(); }
+        // the same message typed here was sent from elsewhere (it came through the shared draft): clear it
+        const ta = $('#pb-input'); const typed = ta ? ta.value.trim() : '';
+        if (typed && d.entry.items.some((x) => x.kind === 'message' && String(x.text || '').trim() === typed)) { ta.value = ''; autoGrow(ta); store.del(K.draft, true); syncDraft(); updateTop(); }
       }
       if (d.delivered) for (const x of S.transcript) if (d.delivered.includes(x.id)) x.delivered = d.at;
       renderConvo(); refreshStates(); updateNavBadges();
@@ -1865,7 +1868,10 @@ var PB_PARSE = (() => {
     else if (location.hash) { const t = document.getElementById(location.hash.slice(1)); if (t) setTimeout(() => t.scrollIntoView(), 50); }
   }
   function restoreDraft() {
-    const d = store.get(K.draft, '', true) || (S.draft && S.draft.text) || ''; const ta = $('#pb-input'); if (d && ta) { ta.value = d; autoGrow(ta); }
+    let d = store.get(K.draft, '', true) || (S.draft && S.draft.text) || '';
+    const last = [...S.transcript].reverse().find((e) => e.from === 'user' && e.kind === 'batch');
+    if (d && last && last.items.some((x) => x.kind === 'message' && String(x.text || '').trim() === d.trim())) { d = ''; store.del(K.draft, true); } // already sent
+    const ta = $('#pb-input'); if (d && ta) { ta.value = d; autoGrow(ta); }
     const p = store.get(K.draft + ':pop', null, true);
     if (p && p.text && p.text.trim()) {
       enqueue({ kind: 'comment', key: `comment:${rid()}`, mode: p.mode === 'ask' ? 'ask' : 'change', target: { ...p.t, quote: p.quote || undefined }, text: p.text.trim() });
