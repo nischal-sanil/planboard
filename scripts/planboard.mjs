@@ -487,6 +487,7 @@ function mdSteps(steps, nums) {
   const L = []; let phase = null;
   for (const s of steps) {
     if (s.phase && s.phase !== phase) L.push(`**Phase: ${oneLine(s.phase, 200)}**`, '');
+    else if (!s.phase && phase) L.push('**Steps without a phase**', '');
     phase = s.phase || null;
     L.push(mdStep(s, nums.get(s.id), nums));
   }

@@ -332,6 +332,7 @@ var PB_PARSE = (() => {
     if (!placed.has('overview')) { const n = renderBlock('overview'); if (n) doc.prepend(n); }
     for (const kind of BLOCKS) if (!placed.has(kind) && kind !== 'overview') { const n = renderBlock(kind); if (n) doc.append(n); }
   }
+  let inlinePhase = null;
   function renderSingle(kind, id) {
     const list = { question: PLAN.questions, decision: PLAN.decisions, assumption: PLAN.assumptions, step: PLAN.steps, risk: PLAN.risks, section: PLAN.sections }[kind] || [];
     const it = list.find((x) => x && x.id === id);
@@ -341,7 +342,12 @@ var PB_PARSE = (() => {
     if (kind === 'assumption') return renderAssumption(it);
     if (kind === 'risk') return renderRisk(it);
     if (kind === 'section') return renderPlanSection(it);
-    if (kind === 'step') { const i = PLAN.steps.indexOf(it); return h('ol', { class: 'pb-steps', start: i + 1 }, it.phase ? h('li', { class: 'pb-phase', role: 'presentation', text: it.phase }) : null, renderStep(it, i)); }
+    if (kind === 'step') {
+      // consecutive inline steps of one phase share a single phase heading
+      const i = PLAN.steps.indexOf(it); const head = it.phase && it.phase !== inlinePhase ? h('li', { class: 'pb-phase', role: 'presentation', text: it.phase }) : null;
+      inlinePhase = it.phase || null;
+      return h('ol', { class: 'pb-steps', start: i + 1 }, head, renderStep(it, i));
+    }
   }
   function block(id, title, meta, ...kids) {
     return h('section', { class: `pb-block pb-block--${id}`, 'data-pb-section': id, 'data-pb-title': title, id: `pb-sec-${id}` },
@@ -372,7 +378,7 @@ var PB_PARSE = (() => {
         const done = steps.filter((s) => s.status === 'done').length;
         let phase = null;
         const list = h('ol', { class: 'pb-steps' + (store.get(K.compact, false) ? ' is-compact' : '') }, steps.filter(notInline('step')).map((s) => {
-          const head = s.phase && s.phase !== phase ? h('li', { class: 'pb-phase', role: 'presentation', text: s.phase }) : null;
+          const head = s.phase && s.phase !== phase ? h('li', { class: 'pb-phase', role: 'presentation', text: s.phase }) : !s.phase && phase ? h('li', { class: 'pb-phase', role: 'presentation', text: 'Steps without a phase' }) : null;
           phase = s.phase || null;
           return [head, renderStep(s, steps.indexOf(s))];
         }));
