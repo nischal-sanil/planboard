@@ -432,19 +432,28 @@ function lintSummary(r) {
 const HANDOFF_HEADINGS = ['Mission', 'Current state', 'Decisions', 'Remaining steps', 'Commands', 'How to verify', 'Gotchas', 'First action'];
 // Parts only the session can fill. Each must exist and hold real text (not just a comment).
 const HANDOFF_BLANKS = [['###', 'Where things stand'], ['###', 'Setup from a clean checkout'], ['##', 'Gotchas'], ['##', 'First action']];
-// Find one of the blanks in a handoff: its heading line and where its body ends. Headings inside fenced code
-// don't count, and a "##" part (Gotchas, First action) may contain its own "###" subheadings.
-function handoffBlank(lines, lvl, name) {
-  const heads = []; let fenced = null;
+// Headings the handoff skeleton itself writes at "###" level; a "###" blank ends at one of these (or at any "##"),
+// so the agent may use its own "###" subheadings inside a blank.
+const HANDOFF_SKELETON_H3 = ['Where things stand', 'Step status', 'Background', 'Settled with the user', 'Still open', 'Setup from a clean checkout', 'Commands used by the steps', 'Risks to watch'];
+// The lines that are headings, skipping fenced code the way Markdown does: a fence closes only with the same
+// character, at least as long, and nothing else on the line.
+function mdHeadings(lines) {
+  const heads = []; let fence = null;
   lines.forEach((l, k) => {
-    const f = /^\s*(`{3,}|~{3,})/.exec(l);
-    if (f) { if (!fenced) fenced = f[1][0]; else if (f[1][0] === fenced) fenced = null; return; }
-    if (!fenced) { const m = /^(#{1,6})\s/.exec(l); if (m) heads.push({ k, level: m[1].length }); }
+    const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(l);
+    if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !f[2].trim()) fence = null; return; }
+    if (f && !(f[1][0] === '`' && f[2].includes('`'))) { fence = f[1]; return; }
+    const m = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(l); if (m) heads.push({ k, level: m[1].length, text: m[2] });
   });
-  const want = lvl.length;
-  const start = heads.find((x) => x.level === want && new RegExp(`^${lvl}\\s+(?:\\d+\\.\\s*)?${name}`, 'i').test(lines[x.k]));
+  return heads;
+}
+// Find one of the blanks in a handoff: its heading line and where its body ends.
+function handoffBlank(lines, lvl, name) {
+  const heads = mdHeadings(lines); const want = lvl.length;
+  const named = (x, n) => new RegExp(`^(?:\\d+\\.\\s*)?${n}\\b`, 'i').test(x.text);
+  const start = heads.find((x) => x.level === want && named(x, name));
   if (!start) return null;
-  const next = heads.find((x) => x.k > start.k && x.level <= want);
+  const next = heads.find((x) => x.k > start.k && (x.level < 3 || (want === 3 && x.level === 3 && HANDOFF_SKELETON_H3.some((n) => named(x, n)))));
   const j = next ? next.k : lines.length;
   return { i: start.k, j, body: lines.slice(start.k + 1, j).join('\n').trim() };
 }
@@ -1082,9 +1091,11 @@ async function cmdStop() {
 function carryOverBlanks(fresh, old) {
   const out = fresh.split('\n'); const prev = old.split('\n'); let kept = 0;
   for (const [lvl, name] of HANDOFF_BLANKS) {
-    const o = handoffBlank(prev, lvl, name); if (!o || !o.body || /TODO\(agent\)/.test(o.body)) continue;
+    // keep what was written even if the TODO comment was left next to it
+    const o = handoffBlank(prev, lvl, name); const body = o ? o.body.replace(/<!--\s*TODO\(agent\)[\s\S]*?-->/g, '').trim() : '';
+    if (!body) continue;
     const n = handoffBlank(out, lvl, name); if (!n) continue;
-    out.splice(n.i + 1, n.j - n.i - 1, '', ...o.body.split('\n'), ''); kept++;
+    out.splice(n.i + 1, n.j - n.i - 1, '', ...body.split('\n'), ''); kept++;
   }
   return { text: out.join('\n'), kept };
 }
@@ -1115,7 +1126,8 @@ function cmdExport(a) {
     let text = toHandoffMd(plan, dir); let kept = 0; let backup = null;
     if (exists && (a.update || a.force)) {
       const old = fs.readFileSync(out, 'utf8');
-      backup = `${out}.bak`; fs.writeFileSync(backup, old);
+      // keep the two previous versions: handoff.md.bak (just now) and handoff.md.bak.1 (the time before)
+      backup = `${out}.bak`; if (fs.existsSync(backup)) fs.renameSync(backup, `${backup}.1`); fs.writeFileSync(backup, old);
       if (a.update) ({ text, kept } = carryOverBlanks(text, old));
     }
     fs.writeFileSync(out, text);
@@ -1293,7 +1305,7 @@ function cmdServe(a) {
     let t = null;
     const onChange = (file) => {
       const f = String(file || '');
-      if (f.startsWith('.planboard') || /\.tmp$|\.swp$|~$|^\.#/.test(f) || ['plan.md', 'handoff.md'].includes(f) || f.endsWith('.export.html') || f.endsWith('.bak')) return;
+      if (f.startsWith('.planboard') || /\.tmp$|\.swp$|~$|^\.#/.test(f) || ['plan.md', 'handoff.md'].includes(f) || f.endsWith('.export.html') || /\.bak(\.\d+)?$/.test(f)) return;
       clearTimeout(t);
       t = setTimeout(() => broadcast(id, 'reload', { file: f }), 180);
     };
