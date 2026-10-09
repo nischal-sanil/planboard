@@ -37,7 +37,7 @@ In Claude Code, either:
 Claude investigates, writes the plan to `.plans/<date>-<name>/` in your project, and opens it in your browser. Then:
 
 - **Marigold** marks what needs you. Press **N** to jump to the next one.
-- A diagram too big for its box has an **Expand** button (or double-click it): full screen, zoom with − / + / Fit / 100%, drag to pan, Esc to close.
+- Every diagram has an **Expand** button (or double-click it): full screen, zoom with − / + / Fit / 100%, drag to pan, **‹ / ›** to step between the diagrams of a section (handy for before/after), Esc or Close to go back.
 - **Answer** questions, **Confirm / Wrong / Correct** assumptions, **Choose** an option on decisions.
 - **Comment** on anything: hover a block (or tap it on a phone) and click the speech bubble, or select text. By keyboard: Tab to a section, arrow keys to move between its blocks, Enter to comment. Each section also has **Comment** and **Looks good** buttons in its heading. Pick **Change** (update the plan) or **Ask** (just answer me).
 - Everything queues in the **Conversation** panel (press **C**) until you press **Send**. Unsent feedback survives a reload, and is also kept on the server, so it's still there in another browser.

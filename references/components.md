@@ -245,7 +245,7 @@ flowchart LR
 - Escape `<` and `&` in labels as `&lt;` and `&amp;` (it is HTML). A literal `<br>` in a label is a line break.
 - Node and participant ids are letters, digits and `_`, with single hyphens between them allowed (`login-token`, not `login-token.ts`; put the file name in the label: `tok["login-token.ts"]`).
 - `planboard check` parses every diagram and reports syntax errors with the diagram's id, so you don't have to open the page to find them.
-- Wide diagrams scale down slightly, then scroll sideways. Every diagram has an **Expand** button (or double-click) that opens it full screen with zoom (−, +, Fit, 100%) and drag-to-pan; comments still work there. Expand is a fallback: lay diagrams out so they read without it (see "Wide diagrams" in `design.md`).
+- Wide diagrams scale down slightly, then scroll sideways. Every diagram has an **Expand** button (or double-click) that opens it full screen with zoom (−, +, Fit, 100%), drag-to-pan, and ‹ / › to step between the diagrams of the same section; comments still work there. Expand is a fallback: lay diagrams out so they read without it (see "Wide diagrams" in `design.md`).
 - A syntax error shows the message and the source on the page instead of the picture; `check` reports the same error. `check` can't judge layout, so look at the page after a diagram change to see that it reads well.
 
 ### Flowchart
