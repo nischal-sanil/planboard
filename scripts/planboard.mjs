@@ -863,7 +863,8 @@ function formatFeedback(r, dir, { after = null } = {}) {
     return `No feedback yet (waited ${fmtDuration(r.waited)}). ${tab}\n${listenAgain(D)}`;
   }
   if (r.type === 'none') return 'No new feedback.';
-  if (r.type === 'replaced') return `Another wait on this plan took over (a newer \`wait\`, from this session or another one). If you didn't start one:\n${listenAgain(D)}`;
+  // Two listeners must not keep replacing each other, so this one stands down.
+  if (r.type === 'replaced') return `A newer wait on this plan took over, so this one stopped. Don't start another: the newer one (from this session or another session) gets the feedback. Only if you are sure nothing else is listening (for example you started a second wait by mistake and then stopped it), listen again with: ${CMD} wait ${D} --background`;
   if (r.type === 'ended') return endedText(r.by, dir);
   const items = r.batches.flatMap((b) => b.items);
   const L = [];
