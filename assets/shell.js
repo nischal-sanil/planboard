@@ -1550,6 +1550,9 @@ var PB_PARSE = (() => {
     const paths = [];
     const pairKey = (x, y) => x + '\u0002' + y;
     const pairs = new Set(E.filter((e) => !e.self).map((e) => pairKey(e.from, e.to)));
+    // labels of a fan-out sit near the targets (where the edges are spread apart), of a fan-in near the source
+    const labOut = new Map(), labIn = new Map();
+    for (const e of E) if (e.label && !e.self) { labOut.set(e.from, (labOut.get(e.from) || 0) + 1); labIn.set(e.to, (labIn.get(e.to) || 0) + 1); }
     for (const e of E) {
       const a = byId(e.from), b = byId(e.to); let d, mid;
       if (e.self) {
@@ -1568,14 +1571,19 @@ var PB_PARSE = (() => {
         if (e.rev) pts.reverse();
         if (pairs.has(pairKey(e.to, e.from))) { const off = (e.from < e.to ? 1 : -1) * 9; for (const pt of pts) pt[horiz ? 1 : 0] += off; }
         d = curve(pts);
-        const k = Math.floor((pts.length - 1) / 2), t = pts.length === 2 ? 0.6 : 0.5;
-        mid = [pts[k][0] + (pts[k + 1][0] - pts[k][0]) * t, pts[k][1] + (pts[k + 1][1] - pts[k][1]) * t];
-        // keep the label inside the gap between the two layers, clear of both nodes
+        const two = pts.length === 2;
+        const k = two ? 0 : Math.floor((pts.length - 1) / 2);
+        const t = !two ? 0.5 : (labOut.get(e.from) || 0) >= 3 ? 0.78 : (labIn.get(e.to) || 0) >= 3 ? 0.22 : 0.55;
+        const [p0, p1] = [pts[k], pts[k + 1]];
+        mid = [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t];
+        // keep the label inside the gap between the two layers, clear of both nodes, and on its own edge
         if (e.label) {
           const ax = horiz ? 0 : 1; const lines = wrapLines(e.label, 160, 12);
           const half = (horiz ? Math.max(...lines.map((l) => tw(l, 12))) + 10 : lines.length * 15 + 4) / 2 + 3;
-          const lo = Math.min(pts[k][ax], pts[k + 1][ax]) + half, hi = Math.max(pts[k][ax], pts[k + 1][ax]) - half;
-          mid[ax] = lo <= hi ? Math.min(Math.max(mid[ax], lo), hi) : (pts[k][ax] + pts[k + 1][ax]) / 2;
+          const lo = Math.min(p0[ax], p1[ax]) + half, hi = Math.max(p0[ax], p1[ax]) - half;
+          mid[ax] = lo <= hi ? Math.min(Math.max(mid[ax], lo), hi) : (p0[ax] + p1[ax]) / 2;
+          const f = p1[ax] === p0[ax] ? 0.5 : (mid[ax] - p0[ax]) / (p1[ax] - p0[ax]);
+          mid[1 - ax] = p0[1 - ax] + (p1[1 - ax] - p0[1 - ax]) * f;
         }
       }
       paths.push({ e, d, mid });
