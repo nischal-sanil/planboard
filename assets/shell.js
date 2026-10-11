@@ -912,7 +912,7 @@ var PB_PARSE = (() => {
       h('button', { class: 'pb-btn pb-btn--ghost pb-btn--sm pb-top__hide-narrow', type: 'button', text: 'Hide', onclick: toggleSide }));
     const list = h('div', { class: 'pb-convo', id: 'pb-convo', 'aria-live': 'polite' });
     const ta = h('textarea', { class: 'pb-textarea', id: 'pb-input', rows: 3, placeholder: 'Ask a question or describe a change', 'aria-label': 'Message to the agent' });
-    ta.addEventListener('input', () => { store.set(K.draft, ta.value, true); autoGrow(ta); updateTop(); syncDraft(); });
+    ta.addEventListener('input', () => { store.set(K.draft, ta.value, true); store.set(K.draft + ':at', Date.now(), true); autoGrow(ta); updateTop(); syncDraft(); });
     ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendAll(); } });
     const seg = h('div', { class: 'pb-seg', role: 'group', 'aria-label': 'Message type' },
       h('button', { type: 'button', 'data-mode': 'ask', 'aria-pressed': String(mode === 'ask'), title: 'Just answer me — no plan change needed', text: 'Ask' }),
@@ -1880,9 +1880,12 @@ var PB_PARSE = (() => {
     else if (location.hash) { const t = document.getElementById(location.hash.slice(1)); if (t) setTimeout(() => t.scrollIntoView(), 50); }
   }
   function restoreDraft() {
-    let d = store.get(K.draft, '', true) || (S.draft && S.draft.text) || '';
+    const local = store.get(K.draft, '', true);
+    let d = local || (S.draft && S.draft.text) || '';
+    const typedAt = local ? store.get(K.draft + ':at', 0, true) : (S.draft && S.draft.at) || 0;
     const last = [...S.transcript].reverse().find((e) => e.from === 'user' && e.kind === 'batch');
-    if (d && last && last.items.some((x) => x.kind === 'message' && String(x.text || '').trim() === d.trim())) { d = ''; store.del(K.draft, true); } // already sent
+    // already sent (from another tab) after it was typed here; the same words typed again after sending stay
+    if (d && last && last.at >= typedAt && last.items.some((x) => x.kind === 'message' && String(x.text || '').trim() === d.trim())) { d = ''; store.del(K.draft, true); }
     const ta = $('#pb-input'); if (d && ta) { ta.value = d; autoGrow(ta); }
     const p = store.get(K.draft + ':pop', null, true);
     if (p && p.text && p.text.trim()) {
