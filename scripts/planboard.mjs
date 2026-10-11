@@ -1400,7 +1400,11 @@ function cmdServe(a) {
     if (!listeners.has(id)) listeners.set(id, (async () => {
       let srv = makeServer(id), p;
       try { p = await listenOn(srv, planPorts[id] || 0); }
-      catch { srv = makeServer(id); p = await listenOn(srv, 0); }
+      catch {
+        srv = makeServer(id); p = await listenOn(srv, 0);
+        // Something else holds the old port, and tabs still open on the old link would show it the page key: use a new one.
+        if (pageKeys[id]) { delete pageKeys[id]; writeJSON(KEYS_FILE, pageKeys); }
+      }
       srv.on('error', (e) => log('plan server error', id, e.message));
       if (planPorts[id] !== p) { planPorts[id] = p; writeJSON(PORTS_FILE, planPorts); }
       return p;
@@ -1579,8 +1583,9 @@ function cmdServe(a) {
     if (url.pathname === prefix) { res.writeHead(302, { location: prefix + '/' }); return res.end(); }
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       // Only this plan's own page may post here (pages of other plans live on other ports, i.e. other origins).
+      // Browsers send Origin on every POST, so a missing one isn't a page.
       const origin = req.headers.origin;
-      if (origin && !new RegExp(`^http://(127\\.0\\.0\\.1|localhost|\\[::1\\]):${own}$`).test(origin)) return send(res, 403, 'Forbidden origin');
+      if (!origin || !new RegExp(`^http://(127\\.0\\.0\\.1|localhost|\\[::1\\]):${own}$`).test(origin)) return send(res, 403, 'Forbidden origin');
       if (!/^application\/json\b/i.test(String(req.headers['content-type'] || ''))) return send(res, 415, 'Expected application/json');
     }
     const p = url.pathname.slice(prefix.length);
