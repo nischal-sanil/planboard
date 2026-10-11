@@ -56,7 +56,7 @@ Keep terminal messages to one or two lines while the page is open; the page and 
 | ASK comment/message | Answer in the reply. Change the plan only if the answer exposes a real gap, and say so. |
 | INPUT from a page control | Apply it the way your control meant it (its `data` holds the values) and record the result in `plan.json`. |
 | LOOKS GOOD | That section is settled; don't rework it unless something else forces it. |
-| APPROVED | Apply the other items in the same batch first. Put the approval `note` (if any) in `context` or the step it concerns. Set `"status": "approved"` and produce the chosen output (`references/outputs.md`). Then keep listening in the background (or, when building here, `poll` between steps) so later comments reach you. |
+| APPROVED | Apply the other items in the same batch first. Put the approval `note` (if any) in `context` or the step it concerns. Set `"status": "approved"` and produce the chosen output (`references/outputs.md`). Then keep listening in the background (or, when building here, `poll` between steps, and listen in the background once the build is done) so later comments reach you. |
 | ENDED | Stop waiting. Continue in the terminal. Don't reopen the page unless the user asks (`open --reopen`). |
 
 If the user types in the terminal while the page is open, answer there and keep the plan in sync; the page reloads on its own. A background wait that is already running keeps listening; don't start a second one (a newer wait replaces the older).

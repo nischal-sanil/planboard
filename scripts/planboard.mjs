@@ -930,7 +930,8 @@ function formatFeedback(r, dir, { after = null } = {}) {
   } else if (after && after.mode === 'build') {
     L.push(`- Run \`${CMD} check ${D}\` and fix errors.`);
     L.push(`- Reply in the page: \`${CMD} reply ${D} "<what you changed, answers to ASK items>"\`.`);
-    L.push(`- You're building (${after.output === 'continue' ? 'the user chose "Build it here"' : 'the user let you choose and you chose to build'}): continue with the next step and check again between steps with: ${poll}  (don't run wait).`);
+    if (after.finished) L.push(`- The build is finished: make these changes in the code and plan.json, rerun the affected verification checks, reply, then ${listenAgain(D).replace(/^L/, 'l')}`);
+    else L.push(`- You're building (${after.output === 'continue' ? 'the user chose "Build it here"' : 'the user let you choose and you chose to build'}): continue with the next step and check again between steps with: ${poll}  (don't run wait).`);
   } else if (after && after.mode === 'files') {
     L.push(`- Run \`${CMD} check ${D}\` and fix errors.`);
     const how = { 'plan.md': `\`${CMD} export ${D}\` (rebuilds plan.md)`, 'handoff.md': `\`${CMD} export ${D} --handoff --update\` (rebuilds handoff.md, keeps your filled-in parts)` };
@@ -1066,7 +1067,8 @@ function afterApproval(dir) {
   const started = Array.isArray(plan.steps) && plan.steps.some((x) => x && ['doing', 'done'].includes(x.status));
   const have = ['plan.md', 'handoff.md'].filter((f) => fs.existsSync(path.join(dir, f)));
   const chosen = { 'plan-md': ['plan.md'], 'handoff-md': ['handoff.md'], both: ['plan.md', 'handoff.md'] }[output];
-  if (output === 'continue' || (output === 'agent' && started)) return { mode: 'build', output };
+  const finished = Array.isArray(plan.steps) && plan.steps.length > 0 && plan.steps.every((x) => x && ['done', 'skipped'].includes(x.status));
+  if (output === 'continue' || (output === 'agent' && started)) return { mode: 'build', output, finished };
   if (chosen) return { mode: 'files', output, files: chosen };
   if (have.length) return { mode: 'files', output, files: have };
   return { mode: 'pick', output };
