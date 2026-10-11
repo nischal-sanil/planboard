@@ -6,7 +6,7 @@ You ask Claude to plan something. It investigates, then writes the plan as a loc
 
 Everything runs on your machine. No accounts, no network, no dependencies beyond Node.
 
-[![Watch a 1½-minute video of what planboard does (no sound)](docs/planboard-explainer.png)](docs/planboard-explainer.mp4)
+https://github.com/user-attachments/assets/81e6cd36-08ed-4772-9aaf-92e94cfb6a20
 
 ## Requirements
 
