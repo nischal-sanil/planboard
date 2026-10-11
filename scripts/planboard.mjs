@@ -1609,7 +1609,7 @@ function cmdServe(a) {
     // or the plan moving to another port.
     if (p === '/_api/draft' && req.method === 'POST') {
       const b = await readBody(req, 500_000);
-      const queue = Array.isArray(b.queue) ? b.queue.filter((i) => i && typeof i === 'object' && ITEM_KINDS.has(i.kind)).slice(0, 200).map(clean) : [];
+      const queue = Array.isArray(b.queue) ? b.queue.filter((i) => i && typeof i === 'object' && ITEM_KINDS.has(i.kind)).slice(0, 200).map((i) => ({ ...clean(i), ...(Number.isFinite(i.at) ? { at: i.at } : {}) })) : [];
       writeJSON(stPath(dir, 'draft.json'), { queue, text: String(b.text || '').slice(0, 20000), at: Date.now() });
       return json(res, 200, { ok: true });
     }

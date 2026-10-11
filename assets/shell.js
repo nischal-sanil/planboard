@@ -220,7 +220,7 @@ var PB_PARSE = (() => {
     draftT = setTimeout(() => {
       if (!trusted) return;
       const text = $('#pb-input') ? $('#pb-input').value : '';
-      fetch(API('draft'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ queue: queue.map(({ at, ...x }) => x), text }) }).catch(() => { });
+      fetch(API('draft'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ queue, text }) }).catch(() => { });
     }, 600);
   };
   const saveQueue = () => { store.set(K.queue, queue); syncDraft(); };
@@ -255,7 +255,8 @@ var PB_PARSE = (() => {
     PLAN = (S.plan && typeof S.plan === 'object') ? S.plan : {};
     status = S.status || null;
     queue = store.get(K.queue, []);
-    if (!queue.length && S.draft && Array.isArray(S.draft.queue) && S.draft.queue.length) { queue = S.draft.queue; store.set(K.queue, queue); }
+    // (drafts saved before items kept their time: the draft's own save time is when they were still unsent)
+    if (!queue.length && S.draft && Array.isArray(S.draft.queue) && S.draft.queue.length) { queue = S.draft.queue.map((i) => ({ ...i, at: i.at || S.draft.at || 0 })); store.set(K.queue, queue); }
     // drop anything another tab or browser already sent after it was queued here
     const sentAfter = (i) => S.transcript.some((e) => e.from === 'user' && e.kind === 'batch' && e.at > (i.at || 0) && e.items.some((x) => x.key === i.key));
     if (queue.some(sentAfter)) { queue = queue.filter((i) => !sentAfter(i)); store.set(K.queue, queue); }
