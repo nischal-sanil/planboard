@@ -965,7 +965,7 @@ function endedText(by, dir) {
 const LENS_HINTS = {
   feature: 'Feature or bug: show the flow that changes (pb-diagram sequence or flowchart with :::new / :::changed nodes), the shape of the data or API (pb-code), and for bugs the root cause with evidence.',
   'new-project': 'New project: show the architecture (pb-diagram flowchart), the stack choices as decisions, the folder layout (pb-tree), and milestones (pb-timeline). Use section ids "architecture" and "milestones".',
-  refactor: 'Refactor or migration: show before vs after (section id "before-after"): small shapes side by side in a pb-split, diagrams stacked one above the other with data-caption "Today" / "After this plan"; the rollout order, and a rollback plan as a plan.json section with id "rollback" (so it reaches plan.md; place it here with <div data-pb="section:rollback"></div>).',
+  refactor: 'Refactor or migration: show before vs after (section id "before-after"): small shapes side by side in a pb-split, diagrams stacked one above the other, each with a full data-caption ("Today: …", "After this plan: …"); the rollout order, and a rollback plan as a plan.json section with id "rollback" (so it reaches plan.md; place it here with <div data-pb="section:rollback"></div>).',
   'non-code': 'Non-code project: show deliverables (section id "deliverables"), a timeline (pb-timeline), who does what (pb-table), and any budget or numbers as a small table. Put the numbers in a plan.json section too, so they reach plan.md.',
   generic: 'Pick the form that fits: diagram for structure or flow, table for comparisons, timeline for sequence in time, mock for UI, code for exact shapes.',
 };
