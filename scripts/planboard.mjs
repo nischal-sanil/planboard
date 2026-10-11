@@ -1077,18 +1077,25 @@ async function cmdWait(a, nonBlocking = false) {
     t = a.timeout == null ? (a.background ? WAIT_BACKGROUND_S : WAIT_DEFAULT_S) : Number(a.timeout);
     if (!Number.isFinite(t) || t < 1 || t > WAIT_BACKGROUND_S) fail(`--timeout must be between 1 and ${WAIT_BACKGROUND_S} seconds (got "${a.timeout}"). For a non-blocking check use: ${CMD} poll ${planArg(dir)}`);
   }
+  // A background wait outlives nothing: if the session that started it goes away (we get re-parented),
+  // stop, so the page doesn't say "Agent is waiting" with nobody listening. A wait that starts already
+  // orphaned (detached with & or nohup) would have nobody to read its output, so it doesn't start.
+  // (pid 1 as parent means orphaned, unless pid 1 is the agent itself, as in a container started with `claude`)
+  const parent = process.ppid;
+  const orphaned = () => process.ppid !== parent;
+  const reaper = () => { if (process.platform !== 'linux') return true; try { return !/node|claude/i.test(fs.readFileSync('/proc/1/comm', 'utf8')); } catch { return true; } };
+  if (t > 0 && parent === 1 && reaper()) fail(`wait was started detached (its parent already exited), so nobody would read the feedback. Run it with the Bash tool's run_in_background: true instead of & or nohup:\n  ${CMD} wait ${planArg(dir)} --background`);
   const port = await ensureServer();
   const { id } = await register(port, dir);
-  // A background wait outlives nothing: if the session that started it goes away (we get re-parented),
-  // stop, so the page doesn't say "Agent is waiting" with nobody listening.
-  const parent = process.ppid;
-  if (t > 0) setInterval(() => { if (process.ppid !== parent) process.exit(0); }, 3000).unref();
+  if (t > 0) setInterval(() => { if (orphaned()) process.exit(0); }, 3000).unref();
   let r;
   try { r = await request(port, 'GET', `/p/${id}/_api/wait?timeout=${t}`, null, (t + 30) * 1000); }
   catch (e) {
     print(`The wait was interrupted (${e.message}). Nothing is lost: undelivered feedback stays queued.\n${listenAgain(planArg(dir))}`);
     process.exit(0);
   }
+  // Its session went away while the feedback was on its way: leave it queued for the next wait.
+  if (t > 0 && orphaned()) process.exit(0);
   if (a.json) print(JSON.stringify(r, null, 2));
   else print(formatFeedback(r, dir, { after: afterApproval(dir) }));
   // Only now that it has been printed does the server drop it; if this process died before printing, the next wait re-delivers it.
