@@ -13,7 +13,7 @@ import vm from 'node:vm';
 import { spawn, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 const SELF = fileURLToPath(import.meta.url);
 const SKILL_DIR = path.resolve(path.dirname(SELF), '..');
 const ASSETS = path.join(SKILL_DIR, 'assets');
