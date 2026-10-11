@@ -483,7 +483,8 @@ function mdHeadings(lines) {
       const startedInComment = comment; let rest = l;
       for (;;) {
         if (comment) { const e = rest.indexOf('-->'); if (e < 0) break; comment = false; rest = rest.slice(e + 3); continue; }
-        const b = rest.indexOf('<!--'); if (b < 0) break; comment = true; rest = rest.slice(b + 4);
+        // `<!--` inside inline code is text, not a comment
+        const b = rest.replace(/(`+)[^`][\s\S]*?(?<!`)\1(?!`)/g, (c) => ' '.repeat(c.length)).indexOf('<!--'); if (b < 0) break; comment = true; rest = rest.slice(b + 4);
       }
       if (startedInComment) return;
     }
