@@ -115,3 +115,7 @@ Your plans in `.plans/` stay in your projects until you delete them.
 - `scripts/planboard.mjs`: CLI and local server, zero dependencies.
 - `assets/shell.js`, `assets/shell.css`: the page frame injected around every plan.
 - `examples/magic-link-login/`: a complete plan using every block.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
